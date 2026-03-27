@@ -36,13 +36,10 @@ with st.sidebar:
 
 # --- 4. INPUTS ---
 st.header("Input Parameters")
-
-# Columnar Layout for the three input categories
 col_energy, col_incentives, col_tech = st.columns([1, 1, 1.5])
 
 with col_energy:
     st.subheader("Regional Energy Prices")
-    st.caption("Baseline market prices excluding taxes.")
     country_prices = {}
     for country in selected_countries:
         st.markdown(f"**{country}**")
@@ -52,7 +49,6 @@ with col_energy:
 
 with col_incentives:
     st.subheader("Market-Based Incentives")
-    st.caption("Policy levers and carbon pricing.")
     country_incentives = {}
     for country in selected_countries:
         st.markdown(f"**{country} Policy**")
@@ -62,9 +58,7 @@ with col_incentives:
 
 with col_tech:
     st.subheader("Technology Specifications")
-    st.caption("Technical performance and lifecycles.")
     tech_params = {}
-    # Use expanders to save vertical space if many techs are selected
     for tech in selected_techs:
         with st.expander(f"Edit {tech}"):
             t_col1, t_col2 = st.columns(2)
@@ -85,22 +79,17 @@ for country in selected_countries:
     # Baseline Gas Boiler Logic
     gb = tech_params.get("Gas Boiler", TECH_DEFAULTS["Gas Boiler"])
     crf_gb = (discount_rate * (1 + discount_rate)**gb['life']) / ((1 + discount_rate)**gb['life'] - 1)
-    
-    # Effective gas price includes the carbon tax from the incentives category
     effective_gas_price = cp['gas'] + (ci['tax'] * emission_factor / 1000)
     
     gas_lcoh = (((gb['capex'] * crf_gb) + gb['opex']) / gb['util'] * 100) + (effective_gas_price / gb['eff'] * 100)
     ann_gas_expenditure = (gas_lcoh / 100) * gb['util']
 
     for tech, tp in tech_params.items():
-        # Apply country-specific subsidy from the incentives category
         net_capex = tp['capex'] * (1 - ci['subsidy']/100)
         crf_t = (discount_rate * (1 + discount_rate)**tp['life']) / ((1 + discount_rate)**tp['life'] - 1)
         
         f_price = effective_gas_price if tp['fuel'] == "Gas" else cp['elec']
-        fixed_lcoh = ((net_capex * crf_t) + tp['opex']) / tp['util'] * 100
-        var_lcoh = (f_price / tp['eff']) * 100
-        total_lcoh = fixed_lcoh + var_lcoh
+        total_lcoh = (((net_capex * crf_t) + tp['opex']) / tp['util'] * 100) + (f_price / tp['eff'] * 100)
         
         ann_savings = ann_gas_expenditure - (total_lcoh / 100 * tp['util'])
         capex_gap = net_capex - (gb['capex'] if tech != "Gas Boiler" else net_capex)
@@ -120,32 +109,26 @@ df_res = pd.DataFrame(results)
 t1, t2, t3, t4 = st.tabs(["LCOH Comparison", "Financial Viability", "Price Sensitivity", "Methodology"])
 
 with t1:
-    if not df_res.empty:
-        fig, ax = plt.subplots(figsize=(10, 4))
-        sns.barplot(data=df_res, x="Technology", y="LCOH", hue="Country", ax=ax)
-        ax.set_ylabel("ct / kWh")
-        st.pyplot(fig)
+    fig, ax = plt.subplots(figsize=(10, 4))
+    sns.barplot(data=df_res, x="Technology", y="LCOH", hue="Country", ax=ax)
+    ax.set_ylabel("ct / kWh")
+    st.pyplot(fig)
 
 with t2:
-    st.subheader("Financial Performance vs. Gas Boiler")
     df_fin = df_res[df_res['Technology'] != "Gas Boiler"].copy()
     st.dataframe(df_fin.style.format({"LCOH": "{:.2f}", "NPV ($/kW)": "{:,.2f}", "Payback": "{:.1f}"}), use_container_width=True)
-    
     fig_npv, ax_npv = plt.subplots(figsize=(10, 4))
     sns.barplot(data=df_fin, x="Technology", y="NPV ($/kW)", hue="Country", ax=ax_npv)
     ax_npv.axhline(0, color='black', lw=1)
     st.pyplot(fig_npv)
 
 with t3:
-    st.subheader("Electricity Price Sensitivity Analysis")
     if selected_countries:
         focus_country = st.selectbox("Focus Country for Graph", options=selected_countries)
         e_range = np.linspace(0.01, 0.45, 100)
         fig_sens, ax_sens = plt.subplots(figsize=(10, 5))
-        
         g_baseline = df_res[(df_res['Country'] == focus_country) & (df_res['Technology'] == "Gas Boiler")]['LCOH'].values[0]
         ax_sens.axhline(g_baseline, color='black', linestyle='--', label=f"Gas Boiler ({focus_country})")
-            
         ci_focus = country_incentives[focus_country]
         for tech in selected_techs:
             tp = tech_params[tech]
@@ -155,13 +138,10 @@ with t3:
                 fixed = ((net_c * crf_t) + tp['opex']) / tp['util'] * 100
                 y_vals = [fixed + (p / tp['eff'] * 100) for p in e_range]
                 ax_sens.plot(e_range, y_vals, label=tech, lw=2)
-        
         ax_sens.set_xlabel("Electricity Price ($/kWh)")
         ax_sens.set_ylabel("LCOH (ct/kWh)")
         ax_sens.legend()
         st.pyplot(fig_sens)
 
 with t4:
-    st.header("Methodology")
-    st.markdown("### LCOH Formula")
     st.latex(r"LCOH = \frac{(CAPEX_{net} \cdot CRF) + OPEX_{fixed}}{Utilization} + \frac{Price_{fuel}}{Efficiency}")
