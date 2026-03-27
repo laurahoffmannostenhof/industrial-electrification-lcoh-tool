@@ -1,82 +1,88 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
 import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-# --- 1. SETUP ---
-st.set_page_config(page_title="Industrial Heat Analysis", layout="wide")
-st.title("Medium-temperature Industrial Heat: LCOH of various technologies")
-st.markdown("This tool calculates heat costs based strictly on your uploaded technology parameters.")
+# --- 1. CONFIG ---
+st.set_page_config(page_title="Heat Decarbonization Tool", layout="wide")
+st.title("🛡️ Industrial Heat Techno-Economic Suite")
 
-# --- 2. DATA INPUT ---
-uploaded_file = st.sidebar.file_uploader("Upload your tech_inputs.csv", type="csv")
+# --- 2. SIDEBAR / INPUTS ---
+with st.sidebar:
+    st.header("📈 Market Parameters")
+    gas_p = st.slider("Natural Gas ($/kWh)", 0.02, 0.15, 0.06, help="Industrial retail price")
+    elec_p = st.slider("Electricity ($/kWh)", 0.05, 0.40, 0.18)
+    c_tax = st.number_input("Carbon Tax ($/tCO2)", 0, 500, 80)
+    
+    st.divider()
+    st.header("📂 Data Source")
+    uploaded = st.file_uploader("Upload tech_inputs.csv", type="csv")
 
-if uploaded_file is not None:
-    df = pd.read_csv(uploaded_file)
+# Load Data
+if uploaded:
+    df = pd.read_csv(uploaded)
 else:
-    # Use the template we created earlier as the default
-    df = pd.read_csv("tech_inputs.csv")
+    # Reliable fallback data
+    df = pd.DataFrame({
+        "Technology": ["Natural Gas Boiler", "Electric Boiler", "High-Temp Heat Pump", "Mechanical Vapor Recompression"],
+        "Capex": [60, 130, 1000, 1250],
+        "Opex": [1.2, 0.6, 0.5, 10.0],
+        "Eff": [0.95, 0.99, 3.2, 7.5],
+        "Fuel": ["Gas", "Elec", "Elec", "Elec"]
+    })
 
-# --- 3. THE CALCULATION ENGINE ---
-def run_calculations(data):
-    # Standard Constants
-    CRF = (0.07 * (1 + 0.07)**20) / ((1 + 0.07)**20 - 1)
-    HRS = 8000
-    GAS_PRICE = 0.06  # Base default
-    ELEC_PRICE = 0.18 # Base default
+# --- 3. MATH ENGINE ---
+CRF = 0.0944 # 7% over 20 years
+HRS = 8000
+EF = 0.202 # kgCO2/kWh
 
-    # Derived Columns
-    data['Avg_Capex'] = (data['Capex_Min'] + data['Capex_Max']) / 2
-    data['Avg_Eff'] = (data['Eff_Min'] + data['Eff_Max']) / 2
-    
-    # Calculate Fixed Portion (Hardware + Maintenance)
-    data['Fixed_LCOH'] = ((data['Avg_Capex'] * CRF) + data['Opex_Fixed']) / HRS * 100
-    
-    # Calculate Variable Portion (Fuel)
-    data['Fuel_Price'] = np.where(data['Fuel_Type'] == 'Gas', GAS_PRICE, ELEC_PRICE)
-    data['Variable_LCOH'] = (data['Fuel_Price'] / data['Avg_Eff']) * 100
-    
-    data['Total_LCOH'] = data['Fixed_LCOH'] + data['Variable_LCOH']
-    return data
+def calc_lcoh(row, g, e, t):
+    fuel_price = (g + (t * EF / 1000)) if row['Fuel'] == "Gas" else e
+    fixed = ((row['Capex'] * CRF) + row['Opex']) / HRS * 100
+    variable = (fuel_price / row['Eff']) * 100
+    return fixed + variable
 
-df = run_calculations(df)
+df['LCOH'] = df.apply(lambda x: calc_lcoh(x, gas_p, elec_p, c_tax), axis=1)
 
-# --- 4. THE INTERFACE (TABS) ---
-tab1, tab2, tab3 = st.tabs(["🏆 LCOH Comparison", "🏗️ Cost Structure", "🎯 Efficiency Map"])
+# Find the winner (lowest LCOH)
+winner = df.loc[df['LCOH'].idxmin()]
+
+# --- 4. DASHBOARD LAYOUT ---
+
+# Top Row: Key Metrics
+col1, col2, col3 = st.columns(3)
+col1.metric("Lowest Cost Tech", winner['Technology'])
+col2.metric("Min LCOH", f"{winner['LCOH']:.2f} ct/kWh")
+col3.metric("Carbon Impact", f"{c_tax} $/tCO2", delta=f"{c_tax - 80} vs Base")
+
+st.divider()
+
+tab1, tab2, tab3 = st.tabs(["📊 Cost Comparison", "🗺️ Sensitivity Analysis", "📄 Technical Data"])
 
 with tab1:
-    st.subheader("Total Levelized Cost of Heat")
-    fig1, ax1 = plt.subplots(figsize=(10, 4))
-    ax1.bar(df['Technology'], df['Total_LCOH'], color='#3498db', edgecolor='black')
-    ax1.set_ylabel("ct/kWh")
-    plt.xticks(rotation=45)
-    st.pyplot(fig1)
+    fig, ax = plt.subplots(figsize=(10, 4))
+    sns.barplot(data=df, x='Technology', y='LCOH', hue='Fuel', palette={'Gas': '#454545', 'Elec': '#3498db'}, ax=ax)
+    ax.axhline(df[df['Fuel']=='Gas']['LCOH'].values[0], color='red', linestyle='--', alpha=0.7, label='Gas Baseline')
+    ax.set_title("Levelized Cost of Heat by Technology")
+    st.pyplot(fig)
 
 with tab2:
-    st.subheader("CAPEX vs. Fuel Breakdown")
-    # Stacked Bar Chart
-    fig2, ax2 = plt.subplots(figsize=(10, 4))
-    ax2.bar(df['Technology'], df['Fixed_LCOH'], label='CAPEX & OPEX (Fixed)', color='#2c3e50')
-    ax2.bar(df['Technology'], df['Variable_LCOH'], bottom=df['Fixed_LCOH'], label='Fuel Cost (Variable)', color='#e74c3c')
-    ax2.set_ylabel("ct/kWh")
-    ax2.legend()
-    plt.xticks(rotation=45)
-    st.pyplot(fig2)
-
-with tab3:
-    st.subheader("Efficiency vs. Total Cost")
-    # Scatter plot to show "The Sweet Spot"
-    fig3, ax3 = plt.subplots(figsize=(10, 4))
-    for i, txt in enumerate(df['Technology']):
-        ax3.scatter(df.loc[i, 'Avg_Eff'], df.loc[i, 'Total_LCOH'], s=100)
-        ax3.annotate(txt, (df.loc[i, 'Avg_Eff'], df.loc[i, 'Total_LCOH'] + 0.5))
+    st.subheader("Electricity vs. Gas Sensitivity")
+    st.write("How the winner changes as fuel prices shift:")
     
-    ax3.set_xlabel("Efficiency (COP / %)")
-    ax3.set_ylabel("Total LCOH (ct/kWh)")
-    ax3.grid(True, linestyle='--', alpha=0.6)
-    st.pyplot(fig3)
-
-# --- 5. DATA VIEW ---
-st.divider()
-st.subheader("Raw Results Table")
-st.dataframe(df[['Technology', 'Fuel_Type', 'Fixed_LCOH', 'Variable_LCOH', 'Total_LCOH']].style.format("{:.2f}", subset=['Fixed_LCOH', 'Variable_LCOH', 'Total_LCOH']))
+    # Create a sensitivity matrix for the Winner vs Gas
+    g_range = np.linspace(0.02, 0.12, 10)
+    e_range = np.linspace(0.05, 0.30, 10)
+    matrix = np.zeros((len(e_range), len(g_range)))
+    
+    # Calculate which is cheaper: Best Electric Tech or Gas Boiler
+    best_elec = df[df['Fuel'] == 'Elec'].copy()
+    
+    for i, e in enumerate(e_range):
+        for j, g in enumerate(g_range):
+            gas_lcoh = calc_lcoh(df.iloc[0], g, e, c_tax)
+            elec_lcoh = min([calc_lcoh(row, g, e, c_tax) for _, row in best_elec.iterrows()])
+            matrix[i, j] = elec_lcoh - gas_lcoh # Negative means Elec is cheaper
+            
+    fig2
