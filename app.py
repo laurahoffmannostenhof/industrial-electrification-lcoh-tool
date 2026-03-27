@@ -34,41 +34,47 @@ with st.sidebar:
     discount_rate = st.slider("WACC / Discount Rate (%)", 1, 20, 7) / 100
     emission_factor = 0.202 # kgCO2/kWh gas
 
-# --- 4. INPUTS ---
+# --- 4. INPUTS (STACKED LAYOUT) ---
 st.header("Input Parameters")
-col_energy, col_incentives, col_tech = st.columns([1, 1, 1.5])
 
-with col_energy:
-    st.subheader("Regional Energy Prices")
-    country_prices = {}
-    for country in selected_countries:
-        st.markdown(f"**{country}**")
+# Category 1: Regional Energy Prices
+st.subheader("Regional Energy Prices")
+country_prices = {}
+price_cols = st.columns(len(selected_countries) if selected_countries else 1)
+for i, country in enumerate(selected_countries):
+    with price_cols[i]:
+        st.markdown(f"**{country} Prices**")
         g_p = st.number_input(f"Gas ($/kWh)", 0.01, 0.30, COUNTRY_DEFAULTS[country]['gas'], format="%.3f", key=f"g_p_{country}")
         e_p = st.number_input(f"Elec ($/kWh)", 0.01, 0.50, COUNTRY_DEFAULTS[country]['elec'], format="%.3f", key=f"e_p_{country}")
         country_prices[country] = {"gas": g_p, "elec": e_p}
 
-with col_incentives:
-    st.subheader("Market-Based Incentives")
-    country_incentives = {}
-    for country in selected_countries:
+st.divider()
+
+# Category 2: Market-Based Incentives
+st.subheader("Market-Based Incentives")
+country_incentives = {}
+incentive_cols = st.columns(len(selected_countries) if selected_countries else 1)
+for i, country in enumerate(selected_countries):
+    with incentive_cols[i]:
         st.markdown(f"**{country} Policy**")
         c_tax = st.number_input(f"Carbon Tax ($/tCO2)", 0, 500, COUNTRY_DEFAULTS[country]['tax'], key=f"tax_{country}")
         subsidy = st.slider(f"CAPEX Subsidy (%)", 0, 100, COUNTRY_DEFAULTS[country]['subsidy'], key=f"sub_{country}")
         country_incentives[country] = {"tax": c_tax, "subsidy": subsidy}
 
-with col_tech:
-    st.subheader("Technology Specifications")
-    tech_params = {}
-    for tech in selected_techs:
-        with st.expander(f"Edit {tech}"):
-            t_col1, t_col2 = st.columns(2)
-            with t_col1:
-                cap = st.number_input("CAPEX ($/kW)", 0, 5000, TECH_DEFAULTS[tech]['capex'], key=f"c_{tech}")
-                eff = st.number_input("Efficiency (COP/%)", 0.1, 15.0, TECH_DEFAULTS[tech]['eff'], key=f"e_{tech}")
-            with t_col2:
-                life = st.number_input("Life (Years)", 1, 50, TECH_DEFAULTS[tech]['life'], key=f"l_{tech}")
-                util = st.number_input("Annual Hours", 1, 8760, TECH_DEFAULTS[tech]['util'], key=f"u_{tech}")
-            tech_params[tech] = {"capex": cap, "eff": eff, "life": life, "util": util, "opex": TECH_DEFAULTS[tech]['opex'], "fuel": TECH_DEFAULTS[tech]['fuel']}
+st.divider()
+
+# Category 3: Technology Specifications
+st.subheader("Technology Specifications")
+tech_params = {}
+tech_cols = st.columns(len(selected_techs) if selected_techs else 1)
+for i, tech in enumerate(selected_techs):
+    with tech_cols[i]:
+        st.markdown(f"**{tech}**")
+        cap = st.number_input("CAPEX ($/kW)", 0, 5000, TECH_DEFAULTS[tech]['capex'], key=f"c_{tech}")
+        eff = st.number_input("Efficiency (COP/%)", 0.1, 15.0, TECH_DEFAULTS[tech]['eff'], key=f"e_{tech}")
+        life = st.number_input("Life (Years)", 1, 50, TECH_DEFAULTS[tech]['life'], key=f"l_{tech}")
+        util = st.number_input("Annual Hours", 1, 8760, TECH_DEFAULTS[tech]['util'], key=f"u_{tech}")
+        tech_params[tech] = {"capex": cap, "eff": eff, "life": life, "util": util, "opex": TECH_DEFAULTS[tech]['opex'], "fuel": TECH_DEFAULTS[tech]['fuel']}
 
 # --- 5. CALCULATION ENGINE ---
 results = []
@@ -76,7 +82,6 @@ for country in selected_countries:
     cp = country_prices[country]
     ci = country_incentives[country]
     
-    # Baseline Gas Boiler Logic
     gb = tech_params.get("Gas Boiler", TECH_DEFAULTS["Gas Boiler"])
     crf_gb = (discount_rate * (1 + discount_rate)**gb['life']) / ((1 + discount_rate)**gb['life'] - 1)
     effective_gas_price = cp['gas'] + (ci['tax'] * emission_factor / 1000)
