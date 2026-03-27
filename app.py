@@ -71,18 +71,35 @@ with tab2:
     st.subheader("Electricity vs. Gas Sensitivity")
     st.write("How the winner changes as fuel prices shift:")
     
-    # Create a sensitivity matrix for the Winner vs Gas
-    g_range = np.linspace(0.02, 0.12, 10)
-    e_range = np.linspace(0.05, 0.30, 10)
+    # 1. Create the data ranges
+    g_range = np.linspace(0.02, 0.15, 12)
+    e_range = np.linspace(0.05, 0.40, 12)
     matrix = np.zeros((len(e_range), len(g_range)))
     
-    # Calculate which is cheaper: Best Electric Tech or Gas Boiler
-    best_elec = df[df['Fuel'] == 'Elec'].copy()
+    # 2. Identify the best electric tech from your data
+    best_elec_df = df[df['Fuel'] == 'Elec']
     
-    for i, e in enumerate(e_range):
-        for j, g in enumerate(g_range):
-            gas_lcoh = calc_lcoh(df.iloc[0], g, e, c_tax)
-            elec_lcoh = min([calc_lcoh(row, g, e, c_tax) for _, row in best_elec.iterrows()])
-            matrix[i, j] = elec_lcoh - gas_lcoh # Negative means Elec is cheaper
-            
-    fig2
+    if not best_elec_df.empty:
+        for i, e in enumerate(e_range):
+            for j, g in enumerate(g_range):
+                # Calculate Gas Boiler LCOH (Assuming first row is Gas)
+                gas_lcoh = calc_lcoh(df.iloc[0], g, e, c_tax)
+                # Calculate best Electric LCOH
+                elec_costs = [calc_lcoh(row, g, e, c_tax) for _, row in best_elec_df.iterrows()]
+                matrix[i, j] = min(elec_costs) - gas_lcoh 
+        
+        # 3. Create the Figure BEFORE calling st.pyplot
+        fig2, ax2 = plt.subplots(figsize=(8, 6))
+        sns.heatmap(matrix, 
+                    xticklabels=np.round(g_range, 2), 
+                    yticklabels=np.round(e_range, 2), 
+                    cmap="RdYlGn_r", 
+                    center=0, 
+                    ax=ax2)
+        ax2.set_xlabel("Gas Price ($/kWh)")
+        ax2.set_ylabel("Elec Price ($/kWh)")
+        
+        # 4. Now display it
+        st.pyplot(fig2)
+    else:
+        st.warning("No electric technologies found in your data to compare.")
