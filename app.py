@@ -144,4 +144,13 @@ with t3:
         st.pyplot(fig_sens)
 
 with t4:
-    st.latex(r"LCOH = \frac{(CAPEX_{net} \cdot CRF) + OPEX_{fixed}}{Utilization} + \frac{Price_{fuel}}{Efficiency}")
+    st.header("Methodology and Assumptions")
+    st.markdown("### Levelized Cost of Heat (LCOH)")
+    st.latex(r"LCOH = \frac{(CAPEX_{net} \cdot CRF) + OPEX_{fixed}}{Utilization} + \frac{Fuel Price}{Efficiency}")
+    
+    st.markdown("### Net Present Value (NPV)")
+    st.latex(r"NPV = \sum_{t=1}^{n} \frac{Savings_{annual}}{(1+r)^t} - (CAPEX_{electrification} - CAPEX_{gas})")
+    
+    st.markdown("### Fixed Parameters")
+    st.write(f"Natural Gas Emission Factor: {emission_factor} kgCO2 per kWh.")
+    st.write("Calculations assume constant real energy prices over the project lifetime.")
