@@ -5,7 +5,7 @@ import numpy as np
 
 # --- 1. SETUP ---
 st.set_page_config(page_title="Industrial Heat Analysis", layout="wide")
-st.title("📊 Industrial Heat: Multi-Metric Analysis")
+st.title("Medium-temperature Industrial Heat: LCOH of various technologies")
 st.markdown("This tool calculates heat costs based strictly on your uploaded technology parameters.")
 
 # --- 2. DATA INPUT ---
