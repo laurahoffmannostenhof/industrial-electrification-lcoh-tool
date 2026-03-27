@@ -1,0 +1,5 @@
+Technology,Capex_Min,Capex_Max,Opex_Fixed,Eff_Min,Eff_Max,Fuel_Type
+Gas Boiler,50,60,1.16,0.95,0.95,Gas
+Electric Boiler,100,150,0.58,0.99,0.99,Electricity
+High Heat HP,700,1100,0.5,2.8,3.5,Electricity
+MVC,900,1300,10.0,7.0,10.0,Electricity
