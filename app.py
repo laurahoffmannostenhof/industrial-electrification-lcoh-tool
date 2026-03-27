@@ -8,6 +8,13 @@ import seaborn as sns
 st.set_page_config(page_title="Industrial Heat Strategy Tool", layout="wide")
 st.title("Industrial Heat: Financial and Strategic Suite")
 
+# --- TOOL DESCRIPTION ---
+st.markdown("""
+This tool evaluates the economic viability of electrifying industrial process heat. 
+It compares various electric heating technologies against a **Natural Gas Boiler** baseline. 
+The analysis separates raw market energy prices from policy-driven incentives—such as **Carbon Taxes** and **CAPEX Subsidies**—to help stakeholders identify the "tipping point" for decarbonization investment.
+""")
+
 # --- 2. DATA DEFAULTS ---
 COUNTRY_DEFAULTS = {
     "Germany": {"gas": 0.055, "elec": 0.18, "tax": 80, "subsidy": 30},
