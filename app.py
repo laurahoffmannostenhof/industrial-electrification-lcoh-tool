@@ -30,6 +30,15 @@ TECH_DEFAULTS = {
     "Microwave":       {"capex": 700,  "opex": 10.0, "eff": 0.85, "life": 12, "util": 4000, "fuel": "Elec"}
 }
 
+# 2026 Statutory Defaults for Germany (ct/kWh) - Source: Netztransparenz.de / BMWK
+GERMANY_NON_COMMODITY = {
+    "grid_fee": 2.860, 
+    "offshore": 0.941,
+    "kwkg": 0.446,
+    "stromnev": 1.559,
+    "tax": 0.050
+}
+
 # --- 3. SIDEBAR: GLOBAL SETTINGS ---
 with st.sidebar:
     st.header("1. Scope")
@@ -52,8 +61,18 @@ for i, country in enumerate(selected_countries):
     with price_cols[i]:
         st.markdown(f"**{country} Prices**")
         g_p = st.number_input(f"Gas ($/kWh)", 0.01, 0.30, COUNTRY_DEFAULTS[country]['gas'], format="%.3f", key=f"g_p_{country}")
-        e_p = st.number_input(f"Elec ($/kWh)", 0.01, 0.50, COUNTRY_DEFAULTS[country]['elec'], format="%.3f", key=f"e_p_{country}")
-        country_prices[country] = {"gas": g_p, "elec": e_p}
+        
+        if country == "Germany":
+            with st.expander("DE: Breakdown Electricity Components"):
+                comm_p = st.number_input("Wholesale/Commodity ($/kWh)", 0.01, 0.30, 0.095, format="%.3f")
+                non_comm_sum = sum(GERMANY_NON_COMMODITY.values()) / 100
+                st.caption(f"Statutory Levies/Grid (2026): {non_comm_sum:.4f} $/kWh")
+                e_p = comm_p + non_comm_sum
+                # Store Germany-specific breakdown for the bridge price logic
+                country_prices[country] = {"gas": g_p, "elec": e_p, "comm": comm_p, "non_comm": non_comm_sum}
+        else:
+            e_p = st.number_input(f"Elec ($/kWh)", 0.01, 0.50, COUNTRY_DEFAULTS[country]['elec'], format="%.3f", key=f"e_p_{country}")
+            country_prices[country] = {"gas": g_p, "elec": e_p}
 
 st.divider()
 
@@ -66,12 +85,16 @@ for i, country in enumerate(selected_countries):
         st.markdown(f"**{country} Policy**")
         c_tax = st.number_input(f"Carbon Tax ($/tCO2)", 0, 500, COUNTRY_DEFAULTS[country]['tax'], key=f"tax_{country}")
         subsidy = st.slider(f"CAPEX Subsidy (%)", 0, 100, COUNTRY_DEFAULTS[country]['subsidy'], key=f"sub_{country}")
-        country_incentives[country] = {"tax": c_tax, "subsidy": subsidy}
+        
+        bridge_active = False
+        if country == "Germany":
+            bridge_active = st.checkbox("Apply Industriestrompreis (Bridge Price)", value=True)
+            
+        country_incentives[country] = {"tax": c_tax, "subsidy": subsidy, "bridge": bridge_active}
 
 st.divider()
 
 # Category 3: Technology Specifications
-st.subheader("Technology Specifications")
 tech_params = {}
 tech_cols = st.columns(len(selected_techs) if selected_techs else 1)
 for i, tech in enumerate(selected_techs):
@@ -100,7 +123,19 @@ for country in selected_countries:
         net_capex = tp['capex'] * (1 - ci['subsidy']/100)
         crf_t = (discount_rate * (1 + discount_rate)**tp['life']) / ((1 + discount_rate)**tp['life'] - 1)
         
-        f_price = effective_gas_price if tp['fuel'] == "Gas" else cp['elec']
+        # Determine Effective Electricity Price (Peff)
+        if tp['fuel'] == "Elec":
+            if country == "Germany" and ci['bridge']:
+                # Bridge price caps commodity at 5.0 ct/kWh for 50% of volume
+                cap_price = 0.050
+                p_comm = cp['comm']
+                p_eff_comm = (max(min(p_comm, cap_price), cap_price) * 0.5) + (p_comm * 0.5)
+                f_price = p_eff_comm + cp['non_comm']
+            else:
+                f_price = cp['elec']
+        else:
+            f_price = effective_gas_price
+
         total_lcoh = (((net_capex * crf_t) + tp['opex']) / tp['util'] * 100) + (f_price / tp['eff'] * 100)
         
         ann_savings = ann_gas_expenditure - (total_lcoh / 100 * tp['util'])
@@ -158,11 +193,17 @@ with t3:
 with t4:
     st.header("Methodology and Assumptions")
     st.markdown("### Levelized Cost of Heat (LCOH)")
-    st.latex(r"LCOH = \frac{(CAPEX_{net} \cdot CRF) + OPEX_{fixed}}{Utilization} + \frac{Fuel Price}{Efficiency}")
+    st.latex(r"LCOH = \frac{(CAPEX_{net} \cdot CRF) + OPEX_{fixed}}{Utilization} + \frac{P_{eff}}{Efficiency}")
+    
+    st.markdown("### Effective Electricity Price ($P_{eff}$)")
+    st.write("For Germany under the Bridge Price (Industriestrompreis) regime:")
+    st.latex(r"P_{eff} = [(\max(P_{market}, 5.0) \cdot 0.5) + (P_{market} \cdot 0.5)] + \sum Levies + GridFees")
     
     st.markdown("### Net Present Value (NPV)")
     st.latex(r"NPV = \sum_{t=1}^{n} \frac{Savings_{annual}}{(1+r)^t} - (CAPEX_{electrification} - CAPEX_{gas})")
     
-    st.markdown("### Fixed Parameters")
-    st.write(f"Natural Gas Emission Factor: {emission_factor} kgCO2 per kWh.")
-    st.write("Calculations assume constant real energy prices over the project lifetime.")
+    st.markdown("### Fixed Parameters & 2026 Reference Data")
+    st.write(f"**Natural Gas Emission Factor:** {emission_factor} kgCO2 per kWh.")
+    st.write("**Germany Statutory Non-Commodity Components (ct/kWh):**")
+    st.table(pd.DataFrame([GERMANY_NON_COMMODITY], index=["2026 Baseline"]))
+    st.caption("Sources: EnWG §24c (Subsidized Grid), Netztransparenz.de (Levies), StromStG (Tax).")
