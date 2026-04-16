@@ -166,24 +166,59 @@ with t1:
 with t2:
     st.dataframe(df_res[["Country", "Technology", "LCOH", "NPV", "Payback"]], use_container_width=True)
 
+# --- REPLACING THE SENSITIVITY TAB (T3) ---
+
 with t3:
     if selected_countries:
         focus = st.selectbox("Select Country for Sensitivity", selected_countries)
         e_range = np.linspace(0.01, 0.45, 100)
         fig_s, ax_s = plt.subplots(figsize=(10, 5))
+        
+        # Get Gas Baseline LCOH
         g_base = df_res[(df_res['Country'] == focus) & (df_res['Technology'] == "Gas Boiler")]['LCOH'].values[0]
-        ax_s.axhline(g_base, color='black', linestyle='--', label="Gas Boiler (Baseline)")
+        ax_s.axhline(g_base, color='black', linestyle='-', alpha=0.3, label="Gas Boiler (Baseline)")
+        
+        break_evens = []
+
         for tech in selected_techs:
             tp = tech_params[tech]
             if tp['fuel'] == "Elec":
+                # LCOH Formula components
                 crf = (discount_rate * (1 + discount_rate)**tp['life']) / ((1 + discount_rate)**tp['life'] - 1)
-                fixed = (((tp['capex'] * (1 - country_incentives[focus]['subsidy']/100)) * crf) + tp['opex']) / tp['util'] * 100
-                y_vals = [fixed + (p / tp['eff'] * 100) for p in e_range]
-                ax_s.plot(e_range, y_vals, label=tech, lw=2)
+                fixed_costs = (((tp['capex'] * (1 - country_incentives[focus]['subsidy']/100)) * crf) + tp['opex']) / tp['util'] * 100
+                
+                # Plot the line
+                y_vals = [fixed_costs + (p / tp['eff'] * 100) for p in e_range]
+                line, = ax_s.plot(e_range, y_vals, label=tech, lw=2)
+                
+                # Calculate Intercept (Break-even Price)
+                # gas_lcoh = fixed_costs + (P_elec / eff * 100)
+                # P_elec = (gas_lcoh - fixed_costs) * eff / 100
+                be_price = (g_base - fixed_costs) * tp['eff'] / 100
+                
+                if 0.01 <= be_price <= 0.45:
+                    break_evens.append((tech, be_price, line.get_color()))
+
+        # Mark Intercepts
+        for tech, price, color in break_evens:
+            ax_s.axvline(price, color=color, linestyle='--', alpha=0.6)
+            ax_s.text(price + 0.005, ax_s.get_ylim()[1]*0.9, f"{price:.3f}", 
+                      color=color, rotation=90, fontweight='bold', fontsize=9)
+
+        ax_s.set_title(f"Break-even Sensitivity: {focus}", fontweight='bold')
+        ax_s.set_xlabel(f"Electricity Price ({COUNTRY_DEFAULTS[focus]['currency']}/kWh)", fontweight='bold')
+        ax_s.set_ylabel("LCOH (ct/p per kWh)", fontweight='bold')
         ax_s.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         st.pyplot(fig_s)
 
-# --- REPLACING THE METHODOLOGY TAB (T4) ---
+        # Interpretation Guide
+        st.markdown("### How to Interpret this Graph")
+        cols = st.columns(len(break_evens) if break_evens else 1)
+        for i, (tech, price, color) in enumerate(break_evens):
+            with cols[i]:
+                st.metric(f"Switching Price: {tech}", f"{price:.3f} {COUNTRY_DEFAULTS[focus]['currency']}/kWh")
+                st.write(f"If electricity is **below** this price, {tech} is the cheaper strategic choice.")
+
 
 with t4:
     st.header("Techno-Economic Methodology & Data Sources")
