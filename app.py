@@ -24,15 +24,6 @@ TECH_DEFAULTS = {
     "Microwave":       {"capex": 700,  "opex": 10.0, "eff": 0.85, "life": 12, "util": 4000, "fuel": "Elec"}
 }
 
-# 2026 Statutory Defaults for Germany (ct/kWh) - Source: Netztransparenz.de / BMWK
-GERMANY_NON_COMMODITY = {
-    "grid_fee": 2.860, 
-    "offshore": 0.941,
-    "kwkg": 0.446,
-    "stromnev": 1.559,
-    "tax": 0.050
-}
-
 GERMANY_NON_COMMODITY = {"grid_fee": 2.860, "offshore": 0.941, "kwkg": 0.446, "stromnev": 1.559, "tax": 0.050}
 EMISSION_FACTOR = 0.202 # kgCO2/kWh gas
 
@@ -50,31 +41,84 @@ st.title("IND-HEAT: Policy Impact Dashboard")
 st.markdown("Assess the competitiveness of industrial heat electrification across jurisdictions.")
 
 country_prices = {}
-price_cols = st.columns(len(selected_countries) if selected_countries else 1)
-for i, country in enumerate(selected_countries):
-    with price_cols[i]:
-        st.markdown(f"**{country} Prices**")
-        g_p = st.number_input(f"Gas ($/kWh)", 0.01, 0.30, COUNTRY_DEFAULTS[country]['gas'], format="%.3f", key=f"g_p_{country}")
-        e_p = st.number_input(f"Elec ($/kWh)", 0.01, 0.50, COUNTRY_DEFAULTS[country]['elec'], format="%.3f", key=f"e_p_{country}")
-        country_prices[country] = {"gas": g_p, "elec": e_p}
-
-st.divider()
-
-# Category 2: Market-Based Incentives
-st.subheader("Market-Based Incentives")
 country_incentives = {}
-incentive_cols = st.columns(len(selected_countries) if selected_countries else 1)
-for i, country in enumerate(selected_countries):
-    with incentive_cols[i]:
-        st.markdown(f"**{country} Policy**")
-        c_tax = st.number_input(f"Carbon Tax ($/tCO2)", 0, 500, COUNTRY_DEFAULTS[country]['tax'], key=f"tax_{country}")
-        subsidy = st.slider(f"CAPEX Subsidy (%)", 0, 100, COUNTRY_DEFAULTS[country]['subsidy'], key=f"sub_{country}")
-        country_incentives[country] = {"tax": c_tax, "subsidy": subsidy}
 
-st.divider()
+for country in selected_countries:
+    sym = COUNTRY_DEFAULTS[country]['currency']
+    with st.container(border=True):
+        st.subheader(f"{country} Policy Framework")
+        
+        # CATEGORY A: ELECTRICITY & BRIDGE PRICE (Peff)
+        st.markdown("#### Electricity & Grid Policy")
+        c1, c2 = st.columns([1, 1])
+        with c1:
+            if country == "Germany":
+                comm_p = st.number_input("Wholesale/Commodity (€/kWh)", 0.01, 0.30, 0.095, format="%.3f", key=f"comm_{country}")
+                bridge_active = st.checkbox("Apply Industriestrompreis (Bridge Price)", value=True, key=f"bridge_{country}")
+                
+                # Detailed Explanation of the mechanism
+                st.markdown("""
+                **Mechanism Explanation:**
+                The Industriestrompreis reduces the commodity cost for energy-intensive firms. 
+                It caps 50% of the volume at **5.0 ct/kWh**. The effective price ($P_{e\_eff}$) 
+                is the weighted average of this cap and the current wholesale market price, 
+                plus fixed non-commodity levies.
+                """)
+                
+                non_comm_sum = sum(GERMANY_NON_COMMODITY.values()) / 100
+                p_market_total = comm_p + non_comm_sum
+                p_eff_comm = (max(min(comm_p, 0.050), 0.050) * 0.5 + comm_p * 0.5) if bridge_active else comm_p
+                p_eff_total = p_eff_comm + non_comm_sum
+            else:
+                p_eff_total = st.number_input(f"Flat Elec Price ({sym}/kWh)", 0.01, 0.50, COUNTRY_DEFAULTS[country]['elec'], key=f"e_{country}")
+                p_market_total, p_eff_comm, non_comm_sum = p_eff_total, p_eff_total, 0
+        
+        with c2:
+            if country == "Germany":
+                fig_e, ax_e = plt.subplots(figsize=(5, 1.8))
+                ax_e.barh(["Pe_market", "Pe_eff"], [comm_p*100, p_eff_comm*100], color='#3498db', label="Commodity")
+                ax_e.barh(["Pe_market", "Pe_eff"], [non_comm_sum*100, non_comm_sum*100], left=[comm_p*100, p_eff_comm*100], color='#95a5a6', label="Non-Commodity")
+                ax_e.set_xlabel("ct/kWh", fontsize=8)
+                ax_e.tick_params(labelsize=8)
+                ax_e.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='xx-small')
+                st.pyplot(fig_e)
 
-# Category 3: Technology Specifications
-st.subheader("Technology Specifications")
+        # CATEGORY B: GAS & CARBON POLICY (Pg)
+        st.markdown("#### Gas & Carbon Policy")
+        c3, c4 = st.columns([1, 1])
+        with c3:
+            p_g_market = st.number_input(f"Base Gas Price ({sym}/kWh)", 0.01, 0.30, COUNTRY_DEFAULTS[country]['gas'], format="%.3f", key=f"gp_{country}")
+            c_tax = st.number_input(f"Carbon Tax ({sym}/tCO2)", 0, 500, COUNTRY_DEFAULTS[country]['tax'], key=f"ctax_{country}")
+            tax_impact = (c_tax * EMISSION_FACTOR / 1000)
+            p_g_effective = p_g_market + tax_impact
+        with c4:
+            fig_g, ax_g = plt.subplots(figsize=(5, 1.2))
+            ax_g.barh(["Pg_market", "Pg_effective"], [p_g_market*100, p_g_market*100], color='#e67e22', label="Base")
+            ax_g.barh(["Pg_market", "Pg_effective"], [0, tax_impact*100], left=[p_g_market*100, p_g_market*100], color='#34495e', label="Carbon Surcharge")
+            ax_g.set_xlabel("ct/kWh", fontsize=8)
+            ax_g.tick_params(labelsize=8)
+            ax_g.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='xx-small')
+            st.pyplot(fig_g)
+
+        # CATEGORY C: CAPEX SUPPORT
+        st.markdown("#### Investment Support")
+        c5, c6 = st.columns([1, 1])
+        with c5:
+            subsidy = st.slider(f"CAPEX Subsidy (%)", 0, 100, COUNTRY_DEFAULTS[country]['subsidy'], key=f"sub_{country}")
+        with c6:
+            fig_c, ax_c = plt.subplots(figsize=(5, 1.2))
+            ax_c.barh(["Investment"], [100 - subsidy], color='#2ecc71', label="Net Cost")
+            ax_c.barh(["Investment"], [subsidy], left=[100 - subsidy], color='#f1c40f', label="Subsidy")
+            ax_c.set_xlabel("%", fontsize=8)
+            ax_c.tick_params(labelsize=8)
+            ax_c.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='xx-small')
+            st.pyplot(fig_c)
+
+        country_prices[country] = {"gas": p_g_effective, "elec": p_eff_total, "sym": sym}
+        country_incentives[country] = {"tax": c_tax, "subsidy": subsidy, "bridge": bridge_active if country == "Germany" else False}
+
+# --- 5. TECH SPECS (COLLAPSIBLE) ---
+st.header("2. Technology Specifications")
 tech_params = {}
 for tech in selected_techs:
     with st.expander(f"{tech} Configuration", expanded=False):
@@ -96,8 +140,7 @@ for country in selected_countries:
     for tech, tp in tech_params.items():
         net_capex = tp['capex'] * (1 - ci['subsidy']/100)
         crf_t = (discount_rate * (1 + discount_rate)**tp['life']) / ((1 + discount_rate)**tp['life'] - 1)
-        
-        f_price = effective_gas_price if tp['fuel'] == "Gas" else cp['elec']
+        f_price = cp['gas'] if tp['fuel'] == "Gas" else cp['elec']
         total_lcoh = (((net_capex * crf_t) + tp['opex']) / tp['util'] * 100) + (f_price / tp['eff'] * 100)
         ann_savings = ((gas_lcoh / 100) * gb['util']) - (total_lcoh / 100 * tp['util'])
         capex_gap = net_capex - (gb['capex'] if tech != "Gas Boiler" else net_capex)
@@ -143,13 +186,53 @@ with t3:
 # --- REPLACING THE METHODOLOGY TAB (T4) ---
 
 with t4:
-    st.header("Methodology and Assumptions")
-    st.markdown("### Levelized Cost of Heat (LCOH)")
-    st.latex(r"LCOH = \frac{(CAPEX_{net} \cdot CRF) + OPEX_{fixed}}{Utilization} + \frac{Fuel Price}{Efficiency}")
+    st.header("Techno-Economic Methodology & Data Sources")
     
-    st.markdown("### Net Present Value (NPV)")
-    st.latex(r"NPV = \sum_{t=1}^{n} \frac{Savings_{annual}}{(1+r)^t} - (CAPEX_{electrification} - CAPEX_{gas})")
+    m_col1, m_col2 = st.columns(2)
     
-    st.markdown("### Fixed Parameters")
-    st.write(f"Natural Gas Emission Factor: {emission_factor} kgCO2 per kWh.")
-    st.write("Calculations assume constant real energy prices over the project lifetime.")
+    with m_col1:
+        st.subheader("Economic Equations")
+        st.markdown("**1. Levelized Cost of Heat (LCOH)**")
+        st.write("The LCOH represents the average total cost per unit of heat produced ($ct/kWh$). It accounts for the time-value of money via the Capital Recovery Factor.")
+        st.latex(r"LCOH = \frac{(CAPEX_{net} \cdot CRF) + OPEX_{fixed}}{Utilization} + \frac{P_{fuel\_eff}}{Efficiency}")
+        
+        st.markdown("**2. Capital Recovery Factor (CRF)**")
+        st.write("Used to annualize the investment costs over the asset's economic lifetime ($n$) at a specific discount rate ($i$).")
+        st.latex(r"CRF = \frac{i(1+i)^n}{(1+i)^n - 1}")
+        
+        st.markdown("**3. Net Present Value (NPV)**")
+        st.write("Determines the total value added compared to a Gas Boiler baseline over the technology's life.")
+        st.latex(r"NPV = \sum_{t=1}^{n} \frac{S_t}{(1+i)^t} - \Delta CAPEX")
+        st.caption("Where $S_t$ is annual operating savings and $\Delta CAPEX$ is the incremental upfront cost.")
+
+    with m_col2:
+        st.subheader("Carbon & Policy Logic")
+        st.markdown("**Carbon Pricing ($P_{g\_effective}$)**")
+        st.write("The effective gas price includes the market commodity price plus the carbon surcharge based on the technology-specific emission factor.")
+        st.latex(r"P_{g\_eff} = P_{g\_market} + (\text{Carbon Tax} \cdot \epsilon)")
+        st.write(f"Standard Natural Gas Emission Factor ($\epsilon$): **{EMISSION_FACTOR} kgCO2/kWh**")
+        
+        st.markdown("**German Industriestrompreis (Section 24c EnWG)**")
+        st.write("The model implements the 2024-2028 German electricity price bridge. This involves two primary mechanisms:")
+        st.markdown("""
+        * **Commodity Cap:** A state-funded cap of 5.0 ct/kWh applied to 50% of reference consumption for eligible sectors.
+        * **Levy Reductions:** The abolition of the EEG-Umlage and the stabilization of the 'Stromnebenkosten' (grid fees).
+        """)
+
+    st.divider()
+    
+    st.subheader("Data Sources & Literature")
+    st.markdown("""
+    * **Energy Prices:** [Eurostat - Energy price statistics](https://ec.europa.eu/eurostat/statistics-explained/index.php?title=Energy_price_statistics)
+    * **German Policy Data:** [BMWK - Industriestrompreis Dokumentation](https://www.bundesregierung.de/breg-en/news/reduction-in-energy-prices-2358994)
+    * **Emission Factors:** [IPCC - Emission Factor Database](https://www.ipcc-nggip.iges.or.jp/EFDB/main.php)
+    """)
+    
+    # Methodology Download for PhD Appendix
+    methodology_text = f"""
+    IND-HEAT Framework Analysis
+    Selected Countries: {', '.join(selected_countries)}
+    WACC: {discount_rate*100}%
+    Baseline Emission Factor: {EMISSION_FACTOR} kgCO2/kWh
+    """
+    st.download_button("Download Methodology Summary (TXT)", data=methodology_text, file_name="Methodology_Summary.txt")
