@@ -19,8 +19,8 @@ COUNTRY_DEFAULTS = {
 TECH_DEFAULTS = {
     "Gas Boiler":      {"capex": 55,   "opex": 1.16, "eff": 0.95, "life": 20, "util": 8000, "fuel": "Gas"},
     "Electric Boiler": {"capex": 120,  "opex": 0.58, "eff": 0.99, "life": 15, "util": 8000, "fuel": "Elec"},
-    "High Heat Heat Pump":    {"capex": 1000, "opex": 0.50, "eff": 3.20, "life": 15, "util": 7500, "fuel": "Elec"},
-    "Low Heat Heat Pump":     {"capex": 500,  "opex": 0.50, "eff": 4.00, "life": 15, "util": 7500, "fuel": "Elec"},
+    "High Temperature Heat Pump":    {"capex": 1000, "opex": 0.50, "eff": 3.20, "life": 15, "util": 7500, "fuel": "Elec"},
+    "Low Temperature Heat Pump":     {"capex": 500,  "opex": 0.50, "eff": 4.00, "life": 15, "util": 7500, "fuel": "Elec"},
     "Microwave":       {"capex": 700,  "opex": 10.0, "eff": 0.85, "life": 12, "util": 4000, "fuel": "Elec"}
 }
 
@@ -31,7 +31,7 @@ EMISSION_FACTOR = 0.202 # kgCO2/kWh gas
 with st.sidebar:
     st.header("Scope & Global Financials")
     selected_countries = st.multiselect("Select Countries", options=list(COUNTRY_DEFAULTS.keys()), default=["Germany"])
-    selected_techs = st.multiselect("Select Technologies", options=list(TECH_DEFAULTS.keys()), default=["Gas Boiler", "Electric Boiler", "High Heat Heat Pump"])
+    selected_techs = st.multiselect("Select Technologies", options=list(TECH_DEFAULTS.keys()), default=["Gas Boiler", "Electric Boiler", "High Temperature Heat Pump"])
     discount_rate = st.slider("WACC / Discount Rate (%)", 1, 20, 7) / 100
     st.divider()
     st.info("Tip: Use the Strategic Results tabs at the bottom to compare Net Present Value (NPV) and Payback periods.")
