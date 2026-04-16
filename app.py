@@ -37,8 +37,8 @@ with st.sidebar:
     st.info("Tip: Use the Strategic Results tabs at the bottom to compare Net Present Value (NPV) and Payback periods.")
 
 # --- 4. CATEGORICAL INPUT DASHBOARD ---
-st.title("IND-HEAT: Policy Impact Dashboard")
-st.markdown("Assess the competitiveness of industrial heat electrification across jurisdictions.")
+st.title("Techno-Economic Assessment of Industrial Thermal Electrification: A Jurisdictional Framework for Medium-Temperature Transition and Policy-Driven Break-Even Dynamics")
+st.markdown("Assess the competitiveness of industrial heat electrification across Germany, UK and USA.")
 
 country_prices = {}
 country_incentives = {}
