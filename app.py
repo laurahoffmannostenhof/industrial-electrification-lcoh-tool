@@ -38,8 +38,8 @@ with st.sidebar:
     st.info("Tip: Use the Strategic Results tabs at the bottom to compare Net Present Value (NPV) and Payback periods.")
 
 # --- 4. CATEGORICAL INPUT DASHBOARD ---
-st.title("Techno-Economic Platform for Evaluating Thermal Decarbonization and Switching Price Dynamics")
-st.markdown("Assess the competitiveness of industrial heat electrification across Germany, UK and USA.")
+st.title("Industrial Heat Electrification Parity Engine")
+st.markdown("A Multi-Level Analytical System for Economics, Markets, and Policy by Laura Hoffmann-Ostenhof. Work in Progress - Feedback Welcome!")
 
 country_prices = {}
 country_incentives = {}
