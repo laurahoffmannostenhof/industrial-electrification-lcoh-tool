@@ -11,9 +11,9 @@ plt.style.use('seaborn-v0_8-whitegrid')
 
 # --- 2. DATA DEFAULTS ---
 COUNTRY_DEFAULTS = {
-    "Germany": {"gas": 0.055, "elec": 0.18, "tax": 80, "subsidy": 30, "currency": "€"},
-    "UK":      {"gas": 0.065, "elec": 0.22, "tax": 50, "subsidy": 20, "currency": "£"},
-    "USA":     {"gas": 0.020, "elec": 0.08, "tax": 0,  "subsidy": 0,  "currency": "$"}
+    "Germany": {"gas": 5.5, "elec": 18, "tax": 80, "subsidy": 30, "currency": "€", "unit": "ct/kWh"},
+    "UK":      {"gas": 6.5, "elec": 22, "tax": 50, "subsidy": 20, "currency": "£", "unit": "p/kWh"},
+    "USA":     {"gas": 2.0, "elec": 8, "tax": 0,  "subsidy": 0,  "currency": "$", "unit": "ct/kWh"}
 }
 
 TECH_DEFAULTS = {
@@ -53,8 +53,9 @@ for country in selected_countries:
         st.markdown("#### Electricity & Grid Policy")
         c1, c2 = st.columns([1, 1])
         with c1:
+            unit = COUNTRY_DEFAULTS[country]['unit']
             if country == "Germany":
-                comm_p = st.number_input("Wholesale/Commodity (€/kWh)", 0.01, 0.30, 0.095, format="%.3f", key=f"comm_{country}")
+                comm_p = st.number_input(f"Wholesale/Commodity ({unit})", 1.0, 30.0, 9.5, format="%.1f", key=f"comm_{country}") / 100
                 bridge_active = st.checkbox("Apply Industriestrompreis (Bridge Price)", value=True, key=f"bridge_{country}")
                 
                 # Detailed Explanation of the mechanism
@@ -62,7 +63,7 @@ for country in selected_countries:
                 st.markdown(f"""
                 **Mechanism Explanation:**
                 The Industriestrompreis reduces the commodity cost for energy-intensive firms. 
-                It caps 50% of the volume at **5.0 ct/kWh**. The effective price ($P_{{e\_eff}}$) 
+                It caps 50% of the volume at **5.0 ct/kWh**. The effective price ($P_{{e\\\_eff}}$) 
                 is the weighted average of this cap and the current wholesale market price, 
                 plus fixed non-commodity levies. 
                 
@@ -76,7 +77,7 @@ for country in selected_countries:
                 p_eff_comm = (max(min(comm_p, 0.050), 0.050) * 0.5 + comm_p * 0.5) if bridge_active else comm_p
                 p_eff_total = p_eff_comm + non_comm_sum
             else:
-                p_eff_total = st.number_input(f"Flat Elec Price ({sym}/kWh)", 0.01, 0.50, COUNTRY_DEFAULTS[country]['elec'], key=f"e_{country}")
+                p_eff_total = st.number_input(f"Flat Elec Price ({unit})", 1.0, 50.0, float(COUNTRY_DEFAULTS[country]['elec']), key=f"e_{country}") / 100
                 p_market_total, p_eff_comm, non_comm_sum = p_eff_total, p_eff_total, 0
         
         with c2:
@@ -93,7 +94,7 @@ for country in selected_countries:
         st.markdown("#### Gas & Carbon Policy")
         c3, c4 = st.columns([1, 1])
         with c3:
-            p_g_market = st.number_input(f"Base Gas Price ({sym}/kWh)", 0.01, 0.30, COUNTRY_DEFAULTS[country]['gas'], format="%.3f", key=f"gp_{country}")
+            p_g_market = st.number_input(f"Base Gas Price ({unit})", 1.0, 30.0, COUNTRY_DEFAULTS[country]['gas'], format="%.1f", key=f"gp_{country}") / 100
             c_tax = st.number_input(f"Carbon Tax ({sym}/tCO2)", 0, 500, COUNTRY_DEFAULTS[country]['tax'], key=f"ctax_{country}")
             tax_impact = (c_tax * EMISSION_FACTOR / 1000)
             p_g_effective = p_g_market + tax_impact
@@ -120,7 +121,7 @@ for country in selected_countries:
             ax_c.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='xx-small')
             st.pyplot(fig_c)
 
-        country_prices[country] = {"gas": p_g_effective, "elec": p_eff_total, "sym": sym}
+        country_prices[country] = {"gas": p_g_effective, "elec": p_eff_total, "gas_base": p_g_market, "elec_raw": p_market_total, "sym": sym, "unit": unit}
         country_incentives[country] = {"tax": c_tax, "subsidy": subsidy, "bridge": bridge_active if country == "Germany" else False}
 
 # --- 5. TECH SPECS (COLLAPSIBLE) ---
@@ -159,22 +160,23 @@ for country in selected_countries:
 df_res = pd.DataFrame(results)
 
 st.header("3. Strategic Results")
-t1, t2, t3, t4 = st.tabs(["LCOH Comparison", "Financials", "Sensitivity", "Methodology"])
+t1, t2, t3, t4, t5 = st.tabs(["LCOH Comparison", "Financials", "Sensitivity", "Policy Gap Solver", "Methodology"])
 
 with t1:
     fig_main, ax_main = plt.subplots(figsize=(10, 4))
     sns.barplot(data=df_res, x="Technology", y="LCOH", hue="Country", ax=ax_main, palette="viridis", edgecolor="0.2")
-    ax_main.set_ylabel("LCOH (ct or p / kWh)", fontweight='bold')
+    ax_main.set_ylabel("LCOH (ct/p / kWh)", fontweight='bold')
     ax_main.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
     sns.despine(left=True)
     st.pyplot(fig_main)
 
 with t2:
-    st.dataframe(df_res[["Country", "Technology", "LCOH", "NPV", "Payback"]], use_container_width=True)
+    st.dataframe(df_res[["Country", "Technology", "LCOH", "NPV", "Payback"]], width='stretch')
 
 with t3:
     if selected_countries:
         focus = st.selectbox("Select Country for Sensitivity", selected_countries)
+        unit = country_prices[focus]['unit']
         e_range = np.linspace(0.01, 0.45, 100)
         fig_s, ax_s = plt.subplots(figsize=(10, 5))
         
@@ -202,8 +204,8 @@ with t3:
                       color=color, rotation=90, fontweight='bold', fontsize=9)
 
         ax_s.set_title(f"Break-even Sensitivity: {focus}", fontweight='bold')
-        ax_s.set_xlabel(f"Electricity Price ({COUNTRY_DEFAULTS[focus]['currency']}/kWh)", fontweight='bold')
-        ax_s.set_ylabel("LCOH (ct/p per kWh)", fontweight='bold')
+        ax_s.set_xlabel(f"Electricity Price ({unit})", fontweight='bold')
+        ax_s.set_ylabel(f"LCOH ({unit})", fontweight='bold')
         ax_s.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         st.pyplot(fig_s)
 
@@ -211,11 +213,120 @@ with t3:
         cols = st.columns(len(break_evens) if break_evens else 1)
         for i, (tech, price, color) in enumerate(break_evens):
             with cols[i]:
-                st.metric(f"Switching Price: {tech}", f"{price:.3f} {COUNTRY_DEFAULTS[focus]['currency']}/kWh")
+                st.metric(f"Switching Price: {tech}", f"{price:.3f} {unit}")
                 st.write(f"If electricity is **below** this price, {tech} is the cheaper strategic choice.")
 
-
 with t4:
+    st.header("Policy Stack & Gap Solver")
+    
+    if selected_countries:
+        # 1. SETUP
+        s_country = st.selectbox("Select Country", selected_countries, key="stack_country_v6")
+        s_tech = st.selectbox("Select Tech", [t for t in selected_techs if t != "Gas Boiler"], key="stack_tech_v6")
+        
+        cp, ci, tp = country_prices[s_country], country_incentives[s_country], tech_params[s_tech]
+        gb = tech_params.get("Gas Boiler", TECH_DEFAULTS["Gas Boiler"])
+        
+        # Financial Constants
+        crf_gb = (discount_rate * (1 + discount_rate)**gb['life']) / ((1 + discount_rate)**gb['life'] - 1)
+        crf_t = (discount_rate * (1 + discount_rate)**tp['life']) / ((1 + discount_rate)**tp['life'] - 1)
+
+        # --- STEP 1: CURRENT LEVELS (Market Baseline) ---
+        m_gas_lcoh = (((gb['capex'] * crf_gb) + gb['opex']) / gb['util'] * 100) + (cp['gas_base'] / gb['eff'] * 100)
+        m_elec_lcoh = ((tp['capex'] * crf_t) + tp['opex']) / tp['util'] * 100 + (cp['elec_raw'] / tp['eff'] * 100)
+        market_gap = m_elec_lcoh - m_gas_lcoh
+
+        # --- STEP 2: POLICY ADJUSTED REQUIREMENT ---
+        # Flows into Gas
+        tax_impact = (ci['tax'] * EMISSION_FACTOR / 1000 / gb['eff'] * 100)
+        # Flows into Elec
+        subsidy_savings = ((tp['capex'] * (ci['subsidy']/100)) * crf_t) / tp['util'] * 100
+        bridge_savings = ((cp['elec_raw'] - cp['elec']) / tp['eff'] * 100)
+        
+        current_gas_lcoh = m_gas_lcoh + tax_impact
+        current_elec_lcoh = m_elec_lcoh - subsidy_savings - bridge_savings
+        residual_gap = current_elec_lcoh - current_gas_lcoh
+
+        # DISPLAY METRICS
+        st.subheader("1. Current Levels vs. Policy Impacts")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Market Gap", f"{market_gap:.2f} ct/kWh")
+        c2.metric("Total Policy Support", f"-{(tax_impact + subsidy_savings + bridge_savings):.2f} ct/kWh")
+        c3.metric("Residual Gap", f"{max(0, residual_gap):.2f} ct/kWh", 
+                  delta="Parity Reached" if residual_gap <= 0 else f"+{residual_gap:.2f} shift needed",
+                  delta_color="normal" if residual_gap <= 0 else "inverse")
+
+        st.divider()
+
+        # --- STEP 3: VISUALIZING THE GAP ---
+        st.subheader("2. Visualizing the Stack")
+        
+        fig, ax = plt.subplots(figsize=(10, 5))
+        scenarios = ["Market Baseline", "Policy Adjusted"]
+        gas_vals = [m_gas_lcoh, current_gas_lcoh]
+        elec_vals = [m_elec_lcoh, current_elec_lcoh]
+        
+        x = np.arange(len(scenarios))
+        ax.bar(x - 0.2, gas_vals, 0.4, label='Gas Boiler', color='#95a5a6', edgecolor='black')
+        ax.bar(x + 0.2, elec_vals, 0.4, label=s_tech, color='#3498db', edgecolor='black')
+        
+        # Parity Line (Target)
+        ax.axhline(current_gas_lcoh, color='#e67e22', linestyle='--', lw=2, label="Parity Target", alpha=0.8)
+        
+        # Annotate Residual Gap
+        if residual_gap > 0:
+            ax.annotate('', xy=(1.25, current_gas_lcoh), xytext=(1.25, current_elec_lcoh),
+                         arrowprops=dict(arrowstyle='<->', color='#c0392b', lw=2))
+            ax.text(1.3, (current_elec_lcoh + current_gas_lcoh)/2, f'Gap: {residual_gap:.2f} ct', 
+                     color='#c0392b', fontweight='bold', va='center')
+
+        ax.set_ylabel("LCOH (ct/kWh)", fontweight='bold')
+        ax.set_xticks(x)
+        ax.set_xticklabels(scenarios)
+        ax.legend(loc='upper right')
+        sns.despine()
+        st.pyplot(fig)
+
+        st.divider()
+
+        # --- STEP 4: CLOSING THE GAP (Menu of Solutions) ---
+        st.subheader("3. Closing the Residual Gap")
+        if residual_gap > 0:
+            st.write("To eliminate the remaining gap, apply **one or a combination** of these further shifts:")
+            
+            # Additional required shifts
+            add_tax = residual_gap * (gb['eff'] / 100) / (EMISSION_FACTOR / 1000)
+            add_subsidy = (residual_gap * tp['util'] / 100) / (tp['capex'] * crf_t) * 100
+            add_price_drop = residual_gap * tp['eff'] / 100
+
+            s1, s2, s3 = st.columns(3)
+            with s1:
+                st.info("**Option A: Carbon Tax**")
+                st.write(f"Add **+{add_tax:.1f} €/t**")
+                st.caption(f"New Total: {ci['tax'] + add_tax:.1f} €/t")
+            with s2:
+                st.info("**Option B: CAPEX Subsidy**")
+                st.write(f"Add **+{add_subsidy:.1f}%**")
+                st.caption(f"New Total: {min(100, ci['subsidy'] + add_subsidy):.1f}%")
+            with s3:
+                st.info("**Option C: Elec Price**")
+                st.write(f"Drop **-{add_price_drop:.2f} ct**")
+                st.caption(f"New Total: {(cp['elec']*100) - add_price_drop:.2f} ct/kWh")
+        else:
+            st.success("✅ **Economic Parity Reached.** Current policy settings have successfully closed the gap.")
+
+        # --- FLOW DENOTATION ---
+        with st.expander("Technical Breakdown: Flow Logic"):
+            st.markdown(f"""
+            **How the Requirement is Adjusted:**
+            * **Market Starting Point:** Gas starts at `{m_gas_lcoh:.2f} ct` and {s_tech} at `{m_elec_lcoh:.2f} ct`.
+            * **Flow 1 (Carbon Tax):** Increases Gas LCOH by `{tax_impact:.2f} ct`.
+            * **Flow 2 (CAPEX Subsidy):** Decreases {s_tech} LCOH by `{subsidy_savings:.2f} ct`.
+            * **Flow 3 (Energy Bridge):** Decreases {s_tech} LCOH by `{bridge_savings:.2f} ct`.
+            * **Result:** The **Residual Gap** is the difference between these final adjusted levels.
+            """)
+
+with t5:
     st.header("Techno-Economic Methodology & Data Sources")
     
     m_col1, m_col2 = st.columns(2)
