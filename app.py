@@ -189,29 +189,93 @@ with t3:
 
 with t4:
     st.header("Policy Stack & Gap Solver")
-    if selected_countries:
-        s_country = st.selectbox("Select Jurisdiction", selected_countries, key="stack_c")
-        s_tech = st.selectbox("Select Tech", [t for t in selected_techs if t != "Gas Boiler"], key="stack_t")
-        cp, ci, tp = country_prices[s_country], country_incentives[s_country], tech_params[s_tech]
+    
+    # 1. TECHNOLOGY SELECTOR (Pick one to compare across all countries)
+    s_tech = st.selectbox("Select Technology for Cross-Jurisdiction Analysis", 
+                          [t for t in selected_techs if t != "Gas Boiler"], key="poster_tech_sel")
+    
+    # 2. DATA PREP FOR PLOTTING
+    plot_data = []
+    for country in selected_countries:
+        cp, ci = country_prices[country], country_incentives[country]
+        tp = tech_params[s_tech]
         gb = tech_params.get("Gas Boiler", TECH_DEFAULTS["Gas Boiler"])
+        
+        # Financial Constants
         crf_gb = (discount_rate * (1 + discount_rate)**gb['life']) / ((1 + discount_rate)**gb['life'] - 1)
         crf_t = (discount_rate * (1 + discount_rate)**tp['life']) / ((1 + discount_rate)**tp['life'] - 1)
+
+        # MARKET BASELINE (No Policy)
         m_gas_lcoh = (((gb['capex'] * crf_gb) + gb['opex']) / gb['util'] * 100) + (cp['gas_base'] / gb['eff'] * 100)
         m_elec_lcoh = ((tp['capex'] * crf_t) + tp['opex']) / tp['util'] * 100 + (cp['elec_raw'] / tp['eff'] * 100)
-        tax_impact = (ci['tax'] * EMISSION_FACTOR / 1000 / gb['eff'] * 100)
-        sub_savings = ((tp['capex'] * (ci['subsidy']/100)) * crf_t) / tp['util'] * 100
-        brid_savings = ((cp['elec_raw'] - cp['elec']) / tp['eff'] * 100)
-        cur_gas_lcoh, cur_elec_lcoh = m_gas_lcoh + tax_impact, m_elec_lcoh - sub_savings - brid_savings
-        res_gap = cur_elec_lcoh - cur_gas_lcoh
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Market Gap", f"{m_elec_lcoh - m_gas_lcoh:.2f} ct/kWh")
-        c2.metric("Policy Support", f"-{(tax_impact + sub_savings + brid_savings):.2f} ct/kWh")
-        c3.metric("Residual Gap", f"{max(0, res_gap):.2f} ct/kWh")
-        fig_st, ax_st = plt.subplots(figsize=(10, 5))
-        ax_st.bar([0, 1], [m_gas_lcoh, cur_gas_lcoh], 0.3, label='Gas Boiler', color='#95a5a6')
-        ax_st.bar([0.3, 1.3], [m_elec_lcoh, cur_elec_lcoh], 0.3, label=s_tech, color='#3498db')
-        ax_st.set_xticks([0.15, 1.15]); ax_st.set_xticklabels(["Market", "Policy Adjusted"]); st.pyplot(fig_st)
+        
+        # POLICY IMPACTS
+        tax_impact = (ci['tax'] * EMISSION_FACTOR / 1000 / gb['eff'] * 100) # Gas gets pricier
+        subsidy_savings = ((tp['capex'] * (ci['subsidy']/100)) * crf_t) / tp['util'] * 100 # Elec gets cheaper
+        bridge_savings = ((cp['elec_raw'] - cp['elec']) / tp['eff'] * 100) # Elec gets cheaper
+        
+        adj_gas_lcoh = m_gas_lcoh + tax_impact
+        adj_elec_lcoh = m_elec_lcoh - subsidy_savings - bridge_savings
+        
+        plot_data.append({
+            "Jurisdiction": country,
+            "Market Gap": m_elec_lcoh - m_gas_lcoh,
+            "Policy Support": -(tax_impact + subsidy_savings + bridge_savings),
+            "Residual Gap": adj_elec_lcoh - adj_gas_lcoh,
+            "Gas_Baseline": adj_gas_lcoh,
+            "Elec_LCOH": adj_elec_lcoh
+        })
 
+    df_plot = pd.DataFrame(plot_data)
+
+    # 3. THE "POSTER GRAPH"
+    fig_p, ax_p = plt.subplots(figsize=(12, 6))
+    x = np.arange(len(df_plot))
+    width = 0.35
+
+    # Plotting Market vs Policy Adjusted
+    ax_p.bar(x - width/2, df_plot['Market Gap'], width, label='Raw Market Gap (No Policy)', color='#bdc3c7', edgecolor='black')
+    ax_p.bar(x + width/2, df_plot['Residual Gap'], width, label='Residual Gap (With 2026 Policy)', color='#3498db', edgecolor='black')
+
+    # Formatting for Academic Poster
+    ax_p.axhline(0, color='black', lw=1.5)
+    ax_p.set_xticks(x)
+    ax_p.set_xticklabels(df_plot['Jurisdiction'], fontweight='bold')
+    ax_p.set_ylabel("Cost Gap vs. Gas Boiler (ct/kWh)", fontweight='bold')
+    ax_p.set_title(f"Economic Parity Gap for {s_tech}: Market vs. Policy Support", fontsize=14, fontweight='bold')
+    ax_p.legend()
+    
+    # Annotate values for direct use in poster
+    for i, val in enumerate(df_plot['Residual Gap']):
+        ax_p.text(i + width/2, val + 0.2, f"{val:.2f}", ha='center', fontweight='bold', color='#2980b9')
+
+    st.pyplot(fig_p)
+    st.divider()
+
+    # 4. POLICY INTERVENTION SIMULATOR
+    st.subheader("Strategic Gap Closing: Intervention Menu")
+    st.write("What further shifts are required to eliminate the **Residual Gap**?")
+    
+    for country in selected_countries:
+        row = df_plot[df_plot['Jurisdiction'] == country].iloc[0]
+        if row['Residual Gap'] > 0:
+            with st.expander(f"Close the Gap in {country} (+{row['Residual Gap']:.2f} ct needed)"):
+                # Back-calculating the shift required
+                tp = tech_params[s_tech]
+                crf_t = (discount_rate * (1 + discount_rate)**tp['life']) / ((1 + discount_rate)**tp['life'] - 1)
+                
+                req_tax = row['Residual Gap'] * (gb['eff'] / 100) / (EMISSION_FACTOR / 1000)
+                req_sub = (row['Residual Gap'] * tp['util'] / 100) / (tp['capex'] * crf_t) * 100
+                req_elec = row['Residual Gap'] * tp['eff'] / 100
+                
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Add Carbon Tax", f"+{req_tax:.1f} {country_prices[country]['sym']}/t")
+                c2.metric("Add CAPEX Grant", f"+{req_sub:.1f}%")
+                c3.metric("Reduce Elec Price", f"-{req_elec:.2f} ct")
+                
+                st.caption(f"Targeting LCOH Parity at {row['Gas_Baseline']:.2f} {country_prices[country]['unit']}")
+        else:
+            st.success(f"✅ {country}: {s_tech} has reached economic parity.")
 with t5:
     st.header("Techno-Economic Methodology & Data Sources")
     m_col1, m_col2 = st.columns(2)
