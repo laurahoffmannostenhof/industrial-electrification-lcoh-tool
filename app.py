@@ -38,7 +38,7 @@ with st.sidebar:
 
 # --- 4. CATEGORICAL INPUT DASHBOARD ---
 st.title("Techno-Economic Platform for Evaluating Thermal Decarbonization and Switching Price Dynamics")
-st.markdown("Assess industrial heat electrification across Germany, UK, California, and Texas.")
+st.markdown("Assess industrial heat electrification across Germany, UK, California, and Texas. By Laura Hoffmann-Ostenhof. Work in Progress. Feedback welcome!")
 
 country_prices = {}
 country_incentives = {}
