@@ -42,14 +42,19 @@ from core import Prices, Technology
 # ---------------------------------------------------------------------------
 
 # Half-width of the +/- range around each point estimate, as a fraction.
-# (capex, eff, opex, util)
+# (capex, eff, opex_per_mwh, util). The efficiency half-widths are symmetric
+# while the published COP bands are not, so they approximate the source
+# ranges rather than reproducing them. Documented in the Methodology tab.
 UNCERTAINTY_RANGES = {
-    "Gas Boiler":                    (0.10, 0.03, 0.15, 0.05),
-    "Electric Boiler":               (0.15, 0.02, 0.15, 0.05),
-    "High Temperature Heat Pump":    (0.25, 0.15, 0.20, 0.10),
-    "Mechanical Vapor Reconversion": (0.30, 0.20, 0.25, 0.10),
-    "Low Temperature Heat Pump":     (0.20, 0.10, 0.20, 0.08),
-    "Microwave":                     (0.35, 0.15, 0.30, 0.15),
+    "Gas Boiler":                                 (0.10, 0.03, 0.15, 0.05),
+    "Electric Boiler":                            (0.15, 0.02, 0.15, 0.05),
+    "Heat Pump (medium heat, to 150 \u00b0C)":      (0.25, 0.20, 0.20, 0.10),
+    "Booster Heat Pump (steam, above 150 \u00b0C)": (0.25, 0.20, 0.20, 0.10),
+    "Mechanical Vapour Recompression":            (0.30, 0.20, 0.25, 0.10),
+    "Microwave":                                  (0.35, 0.15, 0.30, 0.15),
+    # Legacy names, kept so older saved configurations still resolve.
+    "High Temperature Heat Pump":                 (0.25, 0.15, 0.20, 0.10),
+    "Low Temperature Heat Pump":                  (0.20, 0.10, 0.20, 0.08),
 }
 DEFAULT_RANGE = (0.15, 0.10, 0.15, 0.08)
 
@@ -171,7 +176,7 @@ def draw_technology(rng, tech: Technology, n: int) -> Technology:
     return tech.with_samples(
         capex=triangular(rng, tech.capex, cap_hw, n, floor=1.0),
         eff=triangular(rng, tech.eff, eff_hw, n, floor=0.1),
-        opex=triangular(rng, tech.opex, opex_hw, n, floor=0.0),
+        opex_per_mwh=triangular(rng, tech.opex_per_mwh, opex_hw, n, floor=0.0),
         util=triangular(rng, tech.util, util_hw, n, floor=500.0),
     )
 
@@ -317,13 +322,13 @@ def summarise(results: dict, n: int) -> list:
     return rows
 
 
-VARIANCE_KNOBS = ("prices", "eff", "capex", "opex", "util", "discount_rate")
+VARIANCE_KNOBS = ("prices", "eff", "capex", "opex_per_mwh", "util", "discount_rate")
 
 KNOB_LABELS = {
     "prices": "commodity prices (gas and electricity jointly)",
     "eff": "efficiency / COP",
     "capex": "CAPEX",
-    "opex": "fixed O&M",
+    "opex_per_mwh": "fixed O&M",
     "util": "utilisation",
     "discount_rate": "discount rate",
 }
@@ -381,7 +386,7 @@ def _gap_samples(seed, ctx, tech, baseline, discount_rate, n, tau_overrides, var
             prices = ctx["prices"]
         if vary != "discount_rate":
             rate = discount_rate
-        for field in ("eff", "capex", "opex", "util"):
+        for field in ("eff", "capex", "opex_per_mwh", "util"):
             if vary != field:
                 tech_s = tech_s.with_samples(**{field: getattr(tech, field)})
                 base_s = base_s.with_samples(**{field: getattr(baseline, field)})

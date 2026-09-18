@@ -11,8 +11,11 @@ rather than a second implementation of them.
 UNITS
 -----
 Prices          major currency units per kWh (e.g. 0.055 EUR/kWh)
-CAPEX           USD per kW of rated capacity, converted with `fx`
-OPEX            USD per kW per year (fixed O&M), converted with `fx`
+CAPEX           major currency units per kW of rated capacity, via `fx`
+OPEX            major currency units per MWh of heat DELIVERED (fixed O&M),
+                following the ECCO dataset the technology figures come from.
+                Converting this per-output figure as though it were per kW per
+                year understates it by a factor of utilisation/1000.
 LCOH            minor currency units per kWh of delivered heat (ct/kWh, p/kWh)
 NPV             major currency units per kW of *baseline* capacity
 Efficiency      COP for heat pumps / MVR, thermal fraction for combustion and
@@ -23,10 +26,11 @@ CONVENTIONS
 -----------
 Everything is expressed per kW of the *baseline* (gas boiler) capacity, and
 per the annual delivered heat that baseline provides. A technology with lower
-annual utilisation must be oversized to deliver the same heat, so its capital
-and fixed O&M are scaled by baseline.util / tech.util. Without that scaling a
-low-utilisation technology looks cheap because it is quietly delivering less
-heat.
+annual utilisation must be oversized to deliver the same heat, so its CAPITAL
+is scaled by baseline.util / tech.util. Without that scaling a low-utilisation
+technology looks cheap because it is quietly delivering less heat. Fixed O&M
+is not scaled, because it is already expressed per MWh of heat delivered and
+both options deliver the same heat.
 
 The NPV is incremental: the present value of *operating* savings against the
 incremental capital cost of switching. Levelised costs already amortise
@@ -87,9 +91,9 @@ def annuity_factor(rate, life: int):
 @dataclass(frozen=True)
 class Technology:
     name: str
-    capex: float      # USD/kW
-    opex: float       # USD/kW/yr, fixed O&M
-    eff: float        # COP or thermal fraction
+    capex: float           # major currency units per kW thermal
+    opex_per_mwh: float    # major currency units per MWh of heat DELIVERED
+    eff: float             # COP or thermal fraction
     life: int         # years
     util: float       # full-load hours per year
     fuel: str         # "Gas" or "Elec"
@@ -98,14 +102,20 @@ class Technology:
     def is_electric(self) -> bool:
         return self.fuel != "Gas"
 
-    def fixed_om_share_of_capex(self):
-        """Fixed O&M as a fraction of CAPEX per year.
+    def annual_om_per_kw(self):
+        """Fixed O&M per kW of capacity per year, from the per-MWh figure."""
+        return _unwrap(np.asarray(self.opex_per_mwh) * np.asarray(self.util) / 1000.0)
 
-        Industrial plant typically sits at 2-4%. Values far below that mean
-        O&M is effectively absent for capital-intensive options, which is
-        where it matters most. Surfaced in the UI as a data-quality flag.
+    def fixed_om_share_of_capex(self):
+        """Annual fixed O&M as a fraction of CAPEX.
+
+        Not a unit conversion but a cross-check. The project workbook holds
+        O&M in two incompatible conventions: EUR per MWh of heat delivered
+        (the ECCO dataset) and 2 to 3% of CAPEX per year (the LCOH input
+        sheet). This expresses the first in terms of the second so the
+        disagreement is visible.
         """
-        return _unwrap(np.asarray(self.opex) / np.asarray(self.capex))
+        return _unwrap(np.asarray(self.annual_om_per_kw()) / np.asarray(self.capex))
 
     def with_samples(self, **fields) -> "Technology":
         """Copy with sampled (array-valued) parameters substituted."""
@@ -159,11 +169,15 @@ def levelised_cost(tech: Technology, fuel_price, discount_rate, subsidy=0.0, fx=
     """
     grant = subsidy if tech.is_electric else 0.0
     capex_local = np.asarray(tech.capex) * fx * (1.0 - np.asarray(grant))
-    opex_local = np.asarray(tech.opex) * fx
     crf = np.asarray(capital_recovery_factor(discount_rate, tech.life))
-    fixed = (capex_local * crf + opex_local) / np.asarray(tech.util) * 100.0
+    capital = capex_local * crf / np.asarray(tech.util) * 100.0
+    # O&M is per MWh of heat delivered, so it converts straight to minor
+    # units per kWh. It is NOT divided by utilisation: doing that treats a
+    # per-output figure as a per-capacity-per-year one and understates it by
+    # a factor of utilisation/1000.
+    om = np.asarray(tech.opex_per_mwh) * fx / 10.0
     variable = np.asarray(fuel_price) / np.asarray(tech.eff) * 100.0
-    return _unwrap(fixed + variable)
+    return _unwrap(capital + om + variable)
 
 
 def fuel_price_for(tech: Technology, prices: Prices, market_only: bool = False):
@@ -227,9 +241,11 @@ def switching_economics(
     incremental_capex = capex_tech - capex_base
 
     base_fuel = heat * np.asarray(prices.gas_effective) / np.asarray(baseline.eff)
-    base_opex = np.asarray(baseline.opex) * fx
     tech_fuel = heat * np.asarray(fuel_price_for(tech, prices)) / np.asarray(tech.eff)
-    tech_opex = np.asarray(tech.opex) * fx * scale
+    # O&M is per MWh of heat delivered and both options deliver the same heat,
+    # so neither term carries the capacity scaling factor.
+    base_opex = np.asarray(baseline.opex_per_mwh) * fx * heat / 1000.0
+    tech_opex = np.asarray(tech.opex_per_mwh) * fx * heat / 1000.0
 
     annual_saving = (base_fuel + base_opex) - (tech_fuel + tech_opex)
 

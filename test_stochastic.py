@@ -12,7 +12,7 @@ from scipy.stats import kendalltau
 import stochastic
 from core import EMISSION_FACTOR_GAS, Prices, Technology
 
-GAS_BOILER = Technology("Gas Boiler", 55, 1.16, 0.95, 20, 8000, "Gas")
+GAS_BOILER = Technology("Gas Boiler", 61.7, 1.16, 0.95, 25, 8000, "Gas")
 HTHP = Technology("High Temperature Heat Pump", 1200, 0.60, 2.20, 15, 8000, "Elec")
 
 # Germany at the app's own defaults, decomposed into components.

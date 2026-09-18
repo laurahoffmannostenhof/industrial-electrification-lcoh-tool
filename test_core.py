@@ -20,7 +20,7 @@ from core import (
     switching_economics,
 )
 
-GAS_BOILER = Technology("Gas Boiler", 55, 1.16, 0.95, 20, 8000, "Gas")
+GAS_BOILER = Technology("Gas Boiler", 61.7, 1.16, 0.95, 25, 8000, "Gas")
 HTHP = Technology("High Temperature Heat Pump", 1200, 0.60, 2.20, 15, 8000, "Elec")
 MICROWAVE = Technology("Microwave", 700, 1.0, 0.85, 12, 4000, "Elec")
 
@@ -82,8 +82,8 @@ def test_regression_npv_does_not_double_count_capital():
 
     assert econ["npv"] > 0, "heat pump should clear at these defaults"
     assert old_npv < 0, "the old construction gave the opposite sign"
-    assert isclose(econ["npv"], 122.0, abs_tol=1.0)
-    assert isclose(old_npv, -670.7, abs_tol=1.0)
+    assert isclose(econ["npv"], 164.4, abs_tol=1.0)
+    assert isclose(old_npv, -627.4, abs_tol=1.0)
 
 
 def test_npv_equals_operating_savings_less_incremental_capex():
@@ -100,7 +100,8 @@ def test_operating_saving_excludes_capital():
     heat = GAS_BOILER.util
     fuel = heat * (GERMANY.gas_effective / GAS_BOILER.eff
                    - GERMANY.elec_effective / HTHP.eff)
-    om = GAS_BOILER.opex - HTHP.opex
+    # O&M is per MWh of heat delivered and both deliver the same heat.
+    om = (GAS_BOILER.opex_per_mwh - HTHP.opex_per_mwh) * heat / 1000
     assert isclose(econ["annual_operating_saving"], fuel + om, rel_tol=1e-12)
 
 
@@ -124,8 +125,8 @@ def test_regression_low_utilisation_is_oversized_not_rewarded():
     """Review item 4.
 
     A technology running 4000 h cannot serve an 8000 h duty at the same rated
-    capacity. Its capital and fixed O&M scale up; its LCOH per kWh does not
-    change.
+    capacity. Its CAPITAL scales up; its LCOH per kWh does not change, and its
+    O&M does not scale because that figure is already per MWh delivered.
     """
     econ = switching_economics(MICROWAVE, GAS_BOILER, GERMANY, RATE, SUBSIDY)
     assert isclose(econ["capacity_scaling"], 2.0)
@@ -194,9 +195,29 @@ def test_abatement_cost_sign_follows_the_gap():
     assert (econ["abatement_cost"] < 0) == (econ["lcoh_gap"] < 0)
 
 
-def test_om_share_flags_implausible_values():
-    assert HTHP.fixed_om_share_of_capex() < 0.001
-    assert GAS_BOILER.fixed_om_share_of_capex() > 0.02
+def test_om_is_per_mwh_delivered_not_per_kw_year():
+    """Review correction of 18 September.
+
+    The project workbook gives O&M in EUR per MWh of heat delivered. Dividing
+    that by annual hours, as the app once did, understates it by a factor of
+    utilisation/1000 - eightfold at 8,000 hours.
+    """
+    lcoh = levelised_cost(GAS_BOILER, GERMANY.gas_effective, RATE)
+    capital = GAS_BOILER.capex * capital_recovery_factor(RATE, GAS_BOILER.life) / GAS_BOILER.util * 100
+    fuel = GERMANY.gas_effective / GAS_BOILER.eff * 100
+    om_component = lcoh - capital - fuel
+    assert isclose(om_component, GAS_BOILER.opex_per_mwh / 10, rel_tol=1e-12)
+
+    wrong = GAS_BOILER.opex_per_mwh / GAS_BOILER.util * 100
+    assert isclose(om_component / wrong, GAS_BOILER.util / 1000, rel_tol=1e-9)
+
+
+def test_om_conventions_in_the_workbook_disagree():
+    """Flagged, not fixed: the two source conventions differ by an order of
+    magnitude for heat pumps. ECCO's per-MWh figure implies 0.4% of CAPEX a
+    year; the LCOH input sheet states 2 to 3% for the same technology."""
+    assert HTHP.fixed_om_share_of_capex() < 0.01
+    assert GAS_BOILER.fixed_om_share_of_capex() > 0.10
 
 
 def test_switching_economics_vectorises_consistently():
