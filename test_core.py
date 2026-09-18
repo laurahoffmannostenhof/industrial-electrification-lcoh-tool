@@ -6,6 +6,8 @@ review. Run with `python test_core.py` or `pytest test_core.py`.
 
 from math import isclose, isnan
 
+import numpy as np
+
 from core import (
     EMISSION_FACTOR_GAS,
     Prices,
@@ -25,13 +27,21 @@ MICROWAVE = Technology("Microwave", 700, 1.0, 0.85, 12, 4000, "Elec")
 # Germany, app defaults: 10.8 ct commodity, 5.856 ct non-commodity,
 # Industriestrompreis relief of 2.9 ct, 5.5 ct gas, EUR 80/t carbon.
 GERMANY = Prices(
-    gas_effective=0.055 + 80 * EMISSION_FACTOR_GAS / 1000,
-    elec_effective=0.108 - 0.029 + 0.05856,
-    gas_base=0.055,
-    elec_raw=0.108 + 0.05856,
+    gas_commodity=0.055,
+    carbon_cost=80 * EMISSION_FACTOR_GAS / 1000,
+    elec_commodity=0.108,
+    elec_noncommodity=0.05856,
+    elec_relief=0.029,
 )
 RATE = 0.07
 SUBSIDY = 0.30
+
+
+def test_price_components_compose_to_the_totals():
+    assert isclose(GERMANY.gas_effective, 0.055 + 0.01616, rel_tol=1e-9)
+    assert isclose(GERMANY.gas_base, 0.055)
+    assert isclose(GERMANY.elec_effective, 0.108 - 0.029 + 0.05856, rel_tol=1e-12)
+    assert isclose(GERMANY.elec_raw, 0.108 + 0.05856, rel_tol=1e-12)
 
 
 def test_crf_and_annuity_are_inverses():
@@ -44,6 +54,19 @@ def test_crf_zero_rate():
     assert isclose(capital_recovery_factor(0.0, 10), 0.1)
 
 
+def test_crf_is_array_safe():
+    rates = np.array([0.0, 0.05, 0.07])
+    out = capital_recovery_factor(rates, 15)
+    assert out.shape == (3,)
+    assert isclose(out[0], 1 / 15)
+    assert isclose(out[2], capital_recovery_factor(0.07, 15))
+
+
+def test_scalars_in_scalars_out():
+    assert isinstance(levelised_cost(HTHP, 0.1, RATE), float)
+    assert isinstance(capital_recovery_factor(RATE, 15), float)
+
+
 def test_regression_npv_does_not_double_count_capital():
     """Review item 1.
 
@@ -53,7 +76,6 @@ def test_regression_npv_does_not_double_count_capital():
     """
     econ = switching_economics(HTHP, GAS_BOILER, GERMANY, RATE, SUBSIDY)
 
-    # The old, wrong construction, reproduced for contrast.
     heat = GAS_BOILER.util
     old_savings = (econ["baseline_lcoh"] / 100 * heat) - (econ["lcoh"] / 100 * heat)
     old_npv = old_savings * annuity_factor(RATE, HTHP.life) - econ["incremental_capex"]
@@ -74,7 +96,6 @@ def test_npv_equals_operating_savings_less_incremental_capex():
 
 
 def test_operating_saving_excludes_capital():
-    """The saving term must be fuel plus fixed O&M only."""
     econ = switching_economics(HTHP, GAS_BOILER, GERMANY, RATE, SUBSIDY)
     heat = GAS_BOILER.util
     fuel = heat * (GERMANY.gas_effective / GAS_BOILER.eff
@@ -109,11 +130,9 @@ def test_regression_low_utilisation_is_oversized_not_rewarded():
     econ = switching_economics(MICROWAVE, GAS_BOILER, GERMANY, RATE, SUBSIDY)
     assert isclose(econ["capacity_scaling"], 2.0)
 
-    grant = 1 - SUBSIDY
-    expected_capex = MICROWAVE.capex * grant * 2.0 - GAS_BOILER.capex
+    expected_capex = MICROWAVE.capex * (1 - SUBSIDY) * 2.0 - GAS_BOILER.capex
     assert isclose(econ["incremental_capex"], expected_capex, rel_tol=1e-12)
 
-    # LCOH is per kWh delivered, so oversizing must leave it untouched.
     direct = levelised_cost(MICROWAVE, GERMANY.elec_effective, RATE, SUBSIDY)
     assert isclose(econ["lcoh"], direct, rel_tol=1e-12)
 
@@ -129,26 +148,21 @@ def test_regression_required_electricity_cut_is_in_minor_units():
 
 
 def test_interventions_actually_close_the_gap():
-    """Each lever, applied alone, should land the residual gap on zero."""
     decomp = policy_decomposition(
         HTHP, GAS_BOILER, GERMANY, RATE, carbon_price=80, subsidy=SUBSIDY
     )
     gap = decomp["residual_gap"]
     if gap <= 0:
-        return  # already at parity under these defaults
+        return
 
     levers = interventions_to_close(gap, HTHP, GAS_BOILER, RATE)
-
-    # Carbon price lever.
     extra_carbon = levers["carbon_price"] * EMISSION_FACTOR_GAS / 1000 / GAS_BOILER.eff * 100
     assert isclose(extra_carbon, gap, rel_tol=1e-9)
 
-    # CAPEX grant lever.
     crf = capital_recovery_factor(RATE, HTHP.life)
     extra_grant = (HTHP.capex * levers["capex_grant_pp"] / 100 * crf) / HTHP.util * 100
     assert isclose(extra_grant, gap, rel_tol=1e-9)
 
-    # Electricity price lever.
     assert isclose(levers["elec_price"] / HTHP.eff, gap, rel_tol=1e-9)
 
 
@@ -177,13 +191,26 @@ def test_abatement_cost_sign_follows_the_gap():
         econ["lcoh_gap"] / 100 / (EMISSION_FACTOR_GAS / GAS_BOILER.eff) * 1000,
         rel_tol=1e-12,
     )
-    # Cheaper than gas means a negative cost of abatement.
     assert (econ["abatement_cost"] < 0) == (econ["lcoh_gap"] < 0)
 
 
 def test_om_share_flags_implausible_values():
-    assert HTHP.fixed_om_share_of_capex() < 0.001  # 0.05%, the review's item 6
+    assert HTHP.fixed_om_share_of_capex() < 0.001
     assert GAS_BOILER.fixed_om_share_of_capex() > 0.02
+
+
+def test_switching_economics_vectorises_consistently():
+    """The array path must reproduce the scalar path element by element."""
+    rates = np.array([0.05, 0.07, 0.09])
+    sampled = HTHP.with_samples(capex=np.array([1100.0, 1200.0, 1300.0]))
+    econ = switching_economics(sampled, GAS_BOILER, GERMANY, rates, SUBSIDY)
+
+    for i, (r, cx) in enumerate(zip(rates, [1100.0, 1200.0, 1300.0])):
+        one = switching_economics(
+            HTHP.with_samples(capex=cx), GAS_BOILER, GERMANY, r, SUBSIDY
+        )
+        assert isclose(econ["npv"][i], one["npv"], rel_tol=1e-12)
+        assert isclose(econ["lcoh"][i], one["lcoh"], rel_tol=1e-12)
 
 
 if __name__ == "__main__":
