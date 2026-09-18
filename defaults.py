@@ -48,12 +48,34 @@ SOURCES: dict[str, Source] = {
         "merges procurement, retail margin and network charges into one block "
         "for industry, so no official commodity/network split exists.",
     ),
-    "netztransparenz": Source(
-        "Umlagen und Aufschläge 2026", "Übertragungsnetzbetreiber (netztransparenz.de)",
-        "https://www.netztransparenz.de/",
+    "netztransparenz_offshore": Source(
+        "Offshore-Netzumlage", "Übertragungsnetzbetreiber (netztransparenz.de)",
+        "https://www.netztransparenz.de/de-de/Erneuerbare-Energien-und-Umlagen/Sonstige-Umlagen/Offshore-Netzumlage",
         "2026, published 24 October 2025",
-        "Offshore-Netzumlage, KWKG-Umlage and the Aufschlag für besondere "
-        "Netznutzung (formerly §19 StromNEV-Umlage).",
+        "Single rate for all non-privileged consumers. Reduction only on "
+        "application under the EnFG for electricity-cost-intensive firms.",
+    ),
+    "netztransparenz_kwkg": Source(
+        "KWKG-Umlage", "Übertragungsnetzbetreiber (netztransparenz.de)",
+        "https://www.netztransparenz.de/de-de/Erneuerbare-Energien-und-Umlagen/Sonstige-Umlagen/KWKG-Umlage",
+        "2026, published 24 October 2025",
+        "Up 61% on 2025. Same EnFG reduction route as the Offshore levy.",
+    ),
+    "netztransparenz_19": Source(
+        "Aufschlag für besondere Netznutzung (§19 StromNEV-Umlage)",
+        "Übertragungsnetzbetreiber (netztransparenz.de)",
+        "https://www.netztransparenz.de/de-de/Erneuerbare-Energien-und-Umlagen/Sonstige-Umlagen/Aufschlag-fuer-besondere-Netznutzung-19-StromNEV-Umlage",
+        "2026, published 24 October 2025",
+        "Carries the rate bands. 1.559 ct/kWh on the first 1 GWh per site per "
+        "year, then 0.050 above it, automatically.",
+    ),
+    "kav": Source(
+        "Konzessionsabgabenverordnung (KAV)", "Gesetze im Internet (Bundesamt für Justiz)",
+        "https://www.gesetze-im-internet.de/kav/",
+        "current consolidated text",
+        "Sets the concession fee ceilings. Sondervertragskunden, which is what "
+        "industrial sites are, pay the 0.11 ct/kWh rate rather than the much "
+        "higher tariff-customer rates.",
     ),
     "amprion_19": Source(
         "Aufschlag für besondere Netznutzung seit 2012", "Amprion",
@@ -350,14 +372,14 @@ COUNTRIES: dict[str, dict] = {
             "2026 after the §24c EnWG subsidy.",
         ),
         "elec_levies": [
-            Levy("Offshore-Netzumlage", 0.941, "netztransparenz"),
-            Levy("KWKG-Umlage", 0.446, "netztransparenz"),
-            Levy("Aufschlag für besondere Netznutzung (§19 StromNEV)", 0.050, "amprion_19",
+            Levy("Offshore-Netzumlage", 0.941, "netztransparenz_offshore"),
+            Levy("KWKG-Umlage", 0.446, "netztransparenz_kwkg"),
+            Levy("Aufschlag für besondere Netznutzung (§19 StromNEV)", 0.050, "netztransparenz_19",
                  "1.559 ct/kWh applies to the first 1 GWh per site per year only. "
                  "Above that the rate drops to 0.050 automatically, with no "
                  "application and no eligibility test. For this consumption band "
                  "almost all volume pays 0.050."),
-            Levy("Konzessionsabgabe", 0.110, "netztransparenz",
+            Levy("Konzessionsabgabe", 0.110, "kav",
                  "Sondervertragskunden rate, which is what industrial sites pay."),
             Levy("Stromsteuer, manufacturing rate", 0.050, "stromstg_9b",
                  "2.05 ct/kWh standard, less the 2.00 ct/kWh §9b relief, which "

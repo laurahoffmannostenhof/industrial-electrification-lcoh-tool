@@ -677,36 +677,6 @@ with t5:
             "Fixed O&M": "", "Utilisation": f"±{stochastic.COMMODITY_VOLATILITY['Elec']:.0%}"}],
     ), width="stretch", hide_index=True)
 
-    st.subheader("Known gaps")
-    st.markdown(
-        "- **Price volatility half-widths are placeholders**, not estimates. The variance work shows "
-        "the parity probability moves more with these than with the copula parameter, so they are the "
-        "first thing to derive empirically from the series already used for the tau.\n"
-        "- **Triangular marginals are symmetric; the published COP bands are not.** The EU range for "
-        "100 to 200 °C is 2.5 to 4.0 around a point value of 4.0, so the symmetric draw approximates "
-        "the source range rather than reproducing it.\n"
-        "- **No time dimension.** Single-point prices, no load profile, no time-of-use. Flexibility "
-        "value, thermal storage and dispatch against time-varying prices cannot be represented.\n"
-        "- **No grid emissions.** The abatement cost reflects displaced direct combustion only, so it "
-        "is gross of the electricity supply's carbon intensity.\n"
-        "- **Two O&M conventions in the source material.** The ECCO dataset gives currency per MWh "
-        "delivered; the project's own LCOH input sheet gives 2 to 3% of CAPEX per year for the same "
-        "German heat pumps. For a heat pump these differ by roughly an order of magnitude. This tool "
-        "uses the per-MWh convention throughout and does not reconcile the two.\n"
-        "- **California and Texas defaults are not sourced.** Only Germany and the UK have been traced "
-        "to primary sources.\n"
-        "- **Network charges are not really per kWh.** The UK TNUoS residual is a fixed daily site "
-        "charge and the Capacity Market is levied on winter peak-window demand only, so both depend on "
-        "load shape and site size in ways a flat per-kWh figure cannot capture. German distribution "
-        "charges are regional. Treat the network line as indicative."
-    )
-
-    unsourced = defaults.unsourced_figures()
-    if unsourced:
-        st.markdown("**Defaults carrying no source**")
-        st.dataframe(pd.DataFrame(unsourced, columns=["Where", "Parameter"]),
-                     width="stretch", hide_index=True)
-
 # ---------------------------------------------------------------------------
 # Sources
 # ---------------------------------------------------------------------------
@@ -719,7 +689,8 @@ with t6:
     )
 
     groups = {
-        "Germany": ["bdew_strom", "netztransparenz", "amprion_19", "stromnev_19", "stromstg_9b",
+        "Germany": ["bdew_strom", "netztransparenz_offshore", "netztransparenz_kwkg",
+                    "netztransparenz_19", "amprion_19", "stromnev_19", "kav", "stromstg_9b",
                     "enwg_24c", "bafa_ist", "bafa_eew", "dehst_nehs", "eurostat_gas", "smard",
                     "bnetza_netze", "destatis"],
         "United Kingdom": ["desnz_qep", "desnz_qep_collection", "ccl_rates", "cca", "bics",
@@ -736,18 +707,3 @@ with t6:
             st.markdown(f"**[{s.title}]({s.url})** — {s.publisher}, {s.period}")
             if s.note:
                 st.caption(s.note)
-
-    st.divider()
-    st.subheader("Corrections made in September 2026")
-    st.markdown(
-        "- **§24c EnWG is not the Industriestrompreis.** It is the federal subsidy to transmission "
-        "network charges. The Industriestrompreis is a BAFA scheme under the Clean Industrial Deal "
-        "State Aid Framework, and it pays a top-up rather than capping a price.\n"
-        "- **The IETF was never a levy exemption.** It was a capital grant fund, and it closed at the "
-        "June 2025 Spending Review with no successor. The levy exemption is the EII Exemption Scheme.\n"
-        "- **The §19 StromNEV surcharge degresses above 1 GWh per site per year**, from 1.559 to 0.050 "
-        "ct/kWh, automatically. Earlier versions charged the full rate on all volume.\n"
-        "- **UK industrial gas was overstated by 58%**, at 6.5 p/kWh against the DESNZ figure of 4.12.\n"
-        "- **Fixed O&M was being divided by annual hours**, which is the wrong operation for a figure "
-        "quoted per MWh of heat delivered."
-    )
