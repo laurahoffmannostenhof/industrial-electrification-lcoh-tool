@@ -38,10 +38,10 @@ def figure_help(fig) -> str:
 with st.sidebar:
     st.header("Scope & Global Financials")
     selected_countries = st.multiselect(
-        "Select Jurisdictions", options=list(COUNTRIES.keys()), default=["Germany", "UK"]
+        "Jurisdictions", options=list(COUNTRIES.keys()), default=["Germany", "UK"]
     )
     selected_techs = st.multiselect(
-        "Select Electrification Options",
+        "Electrification options",
         options=list(TECHNOLOGIES.keys()),
         default=["Electric Boiler", "Heat Pump (medium heat, to 150 °C)"],
     )
@@ -49,7 +49,7 @@ with st.sidebar:
 
     st.divider()
     st.subheader("Gas Boiler Baseline")
-    st.caption("The counterfactual. Always applied, whatever is selected above.")
+    st.caption("Always applied. Not affected by the selection above.")
     B = defaults.BASELINE
     b_cap = st.number_input("CAPEX (currency/kW)", 0.0, 5000.0, float(B["capex"].value),
                             help=figure_help(B["capex"]), key="b_cap")
@@ -69,13 +69,10 @@ baseline = Technology("Gas Boiler", b_cap, b_opex, b_eff, int(b_life), b_util, "
 # Header
 # ---------------------------------------------------------------------------
 st.title("Techno-Economic Platform for Evaluating Thermal Decarbonization and Switching Price Dynamics")
-st.markdown(
-    "Assess industrial heat electrification across Germany, the UK, California and Texas. "
-    "By Laura Hoffmann-Ostenhof. Work in Progress. Feedback welcome!"
-)
+st.caption("Germany · United Kingdom · California · Texas — Laura Hoffmann-Ostenhof")
 
 if not selected_countries:
-    st.info("Select at least one jurisdiction in the sidebar.")
+    st.info("Select a jurisdiction to begin.")
     st.stop()
 
 country_ctx = {}
@@ -88,9 +85,9 @@ for country in selected_countries:
         head = f"{country} Policy Framework"
         st.subheader(head)
         if cfg["sourced"]:
-            st.caption(f"Defaults sourced for {cfg['band']}. Hover any field for its source.")
+            st.caption(f"{cfg['band']} · hover a field for its source")
         else:
-            st.caption("Defaults for this jurisdiction are assumed, not sourced. See the Methodology tab.")
+            st.caption("Assumed values, not sourced")
 
         # --- Electricity ---------------------------------------------------
         st.markdown("#### Electricity")
@@ -196,7 +193,7 @@ for country in selected_countries:
         with c5:
             subsidy = st.slider("CAPEX grant (%)", 0, 100, int(cfg["capex_grant"].value),
                                 help=figure_help(cfg["capex_grant"]), key=f"sub_{country}")
-            st.caption("Applied to electrification options only, never to the gas boiler counterfactual.")
+            st.caption("Electrification options only")
             fx = st.number_input(
                 f"FX rate ({sym} per unit of the CAPEX currency)", 0.1, 5.0,
                 float(cfg["fx"].value), step=0.01, help=figure_help(cfg["fx"]), key=f"fx_{country}",
@@ -230,7 +227,7 @@ for country in selected_countries:
 # ---------------------------------------------------------------------------
 st.header("2. Technology Specifications")
 if not selected_techs:
-    st.info("Select at least one electrification option in the sidebar.")
+    st.info("Select an electrification option to begin.")
     st.stop()
 
 technologies = {}
@@ -257,17 +254,13 @@ for name in selected_techs:
 
         tech = Technology(name, cap, opex, eff, int(life), util, d["fuel"])
         st.caption(
-            f"O&M is per MWh of heat delivered, so {opex:.3f} is "
-            f"{opex/10:.3f} {COUNTRIES[selected_countries[0]]['unit']} on the LCOH and "
-            f"{tech.annual_om_per_kw():.1f} per kW per year at {util:,} hours, "
-            f"which is {tech.fixed_om_share_of_capex():.1%} of CAPEX."
+            f"{opex:.3f} per MWh = {opex/10:.3f} {COUNTRIES[selected_countries[0]]['unit']} on LCOH "
+            f"· {tech.annual_om_per_kw():.1f} per kW/yr · {tech.fixed_om_share_of_capex():.1%} of CAPEX"
         )
         if util < baseline.util:
-            st.info(
-                f"Runs {util:,} h against the baseline's {baseline.util:,} h, so it is sized "
-                f"{baseline.util/util:.2f}x larger to deliver the same annual heat. Capital scales; "
-                "O&M does not, because it is already per MWh delivered.",
-                icon="ℹ️",
+            st.caption(
+                f"Sized {baseline.util/util:.2f}x for equal annual heat "
+                f"({util:,} h vs {baseline.util:,} h baseline). Capital scales, O&M does not."
             )
         technologies[name] = tech
 
@@ -292,11 +285,7 @@ with t1:
     plt.setp(ax_main.get_xticklabels(), rotation=15, ha="right")
     st.pyplot(fig_main)
     plt.close(fig_main)
-    st.caption(
-        "The Gas Boiler bar is the counterfactual behind every NPV in the Financials tab, and the "
-        "CAPEX grant is not applied to it. Units are per jurisdiction and are not comparable across bars "
-        "of different currencies."
-    )
+    st.caption("Gas Boiler is the counterfactual. Units differ by jurisdiction.")
 
 with t2:
     show = df_res[["Country", "Technology", "LCOH", "Gap vs gas", "Incremental CAPEX",
@@ -311,10 +300,8 @@ with t2:
         width="stretch",
     )
     st.caption(
-        "LCOH and gap in minor currency units per kWh. CAPEX, saving and NPV per kW of gas boiler "
-        "capacity. NPV and payback are incremental: the present value of **operating** savings less "
-        "incremental capital, so capital is counted once. Abatement cost is currency per tCO2 of "
-        "**direct combustion** emissions displaced; grid emissions are not modelled."
+        "LCOH and gap per kWh. CAPEX, saving and NPV per kW of boiler capacity. "
+        "NPV and payback are incremental. Abatement cost covers direct combustion only."
     )
     buf = io.StringIO()
     df_res.to_csv(buf, index=False)
@@ -341,11 +328,7 @@ with t3:
     ax_s.legend()
     st.pyplot(fig_s)
     plt.close(fig_s)
-    st.caption(
-        "Gas is held fixed while electricity varies, which is an independence assumption. The estimated "
-        "gas-electricity dependence is positive, so this reads more favourably than the correlated model "
-        "in the Uncertainty tab. Treat it as a one-way sensitivity, not a scenario."
-    )
+    st.caption("One-way sensitivity. Gas held fixed, so this reads more favourably than the Uncertainty tab.")
 
 
 @st.cache_data(show_spinner=False)
@@ -360,11 +343,9 @@ def run_uncertainty(country_items, tech_items, base, rate, n, seed, tau_items, c
 
 with t7:
     st.header("Monte Carlo Uncertainty Analysis")
-    st.markdown(
-        "Each trial is one coherent state of the world: a single drawn gas and electricity "
-        "**commodity** price, correlated where a dependence has been estimated, a single cost of "
-        "capital, and a single gas boiler, against which every electrification option is compared. "
-        "The full method is in the Methodology tab."
+    st.caption(
+        "One trial is one state of the world: a single gas and electricity commodity price, "
+        "one cost of capital, one gas boiler. Method in the Methodology tab."
     )
 
     u1, u2, u3 = st.columns(3)
@@ -375,7 +356,7 @@ with t7:
         mc_seed = st.number_input("Random seed", value=42, step=1, key="mc_seed")
     with u3:
         use_corr = st.checkbox("Apply estimated price dependence", value=True, key="mc_corr")
-        st.caption("Unticked forces independence, the comparison baseline.")
+        st.caption("Unticked runs at independence")
 
     with st.expander("Kendall's tau by jurisdiction"):
         st.write(
@@ -425,8 +406,7 @@ with t7:
     fig_u.tight_layout()
     st.pyplot(fig_u)
     plt.close(fig_u)
-    st.caption("Bars span P10 to P90, black line is the median, shaded band is the gas counterfactual "
-               "over the same draws. Axis units differ by jurisdiction.")
+    st.caption("Bars P10 to P90, line at median. Shaded band is the gas counterfactual. Units differ by jurisdiction.")
     for country, res in mc.items():
         st.caption(f"**{country}** — {res.provenance}")
 
@@ -461,8 +441,7 @@ with t7:
         st.metric("NPV positive", f"{pn:.1f}%",
                   delta=f"±{stochastic.binomial_standard_error(pn, int(n_sims))*1.96:.1f} pp (MC noise)",
                   delta_color="off")
-    st.caption("The gap is the paired difference within each trial, not the difference of two "
-               "independent distributions.")
+    st.caption("Paired difference within each trial.")
 
     with st.expander("What drives the spread?"):
         shares = stochastic.variance_decomposition(
@@ -477,8 +456,7 @@ with t7:
             ax_v.set_xlabel("Share of parity-gap variance (%)")
             st.pyplot(fig_v)
             plt.close(fig_v)
-            st.caption("Main effects: each input varied alone. See the Methodology tab for why this is "
-                       "not a freeze-one decomposition.")
+            st.caption("Main effects: each input varied alone. Method in the Methodology tab.")
 
     st.subheader("Summary statistics")
     df_mc = pd.DataFrame(stochastic.summarise(mc, int(n_sims)))
@@ -534,7 +512,7 @@ with t4:
                 {c: "{:+.2f}" for c in df_plot.columns if c != "Jurisdiction"}),
             width="stretch",
         )
-        st.caption("Market gap plus policy support equals the residual gap, by construction.")
+        st.caption("Market gap plus policy support equals residual gap.")
 
     st.divider()
     st.subheader("Closing the residual gap")
@@ -542,7 +520,7 @@ with t4:
         row = df_plot[df_plot["Jurisdiction"] == country].iloc[0]
         gap = row["residual_gap"]
         if gap <= 0:
-            st.success(f"{country}: {s_tech_name} reaches LCOH parity. Check the Financials tab for NPV.")
+            st.success(f"{country}: at parity. See Financials for NPV.")
             continue
         with st.expander(f"{country}: +{gap:.2f} {ctx['unit']} to close"):
             levers = core.interventions_to_close(gap, s_tech, baseline, discount_rate, ctx["fx"])
@@ -551,10 +529,9 @@ with t4:
             c2.metric("Add CAPEX grant", f"+{levers['capex_grant_pp']:.1f} pp")
             c3.metric("Cut electricity price", f"-{levers['elec_price']:.2f} {ctx['unit']}")
             if ctx["subsidy"] * 100 + levers["capex_grant_pp"] > 100:
-                st.warning("That grant exceeds full funding. This lever cannot close the gap alone.", icon="⚠️")
+                st.warning("Exceeds full funding. This lever cannot close the gap alone.")
             if levers["elec_price"] > ctx["prices"].elec_effective * 100:
-                st.warning("The required cut exceeds the whole delivered electricity price. "
-                           "This lever cannot close the gap alone.", icon="⚠️")
+                st.warning("Exceeds the delivered electricity price. This lever cannot close the gap alone.")
 
 # ---------------------------------------------------------------------------
 # Methodology
@@ -568,102 +545,66 @@ with t5:
              r" + \underbrace{\frac{P_{fuel}}{\eta}}_{\text{fuel}}")
     st.latex(r"CRF = \frac{i(1+i)^n}{(1+i)^n - 1}")
     st.markdown(
-        "All three terms are in minor currency units per kWh of heat delivered. "
-        "$h$ is annual full-load hours and $\\eta$ is a COP or a thermal fraction.\n\n"
-        "**Fixed O&M is per MWh of heat delivered**, following the ECCO dataset the technology "
-        "figures come from, so it converts straight to minor units per kWh by dividing by ten. It is "
-        "not divided by annual hours. Doing that treats a per-output figure as a per-capacity-per-year "
-        "one and understates it by a factor of $h/1000$, which is eightfold at 8,000 hours."
+        "Minor currency units per kWh of heat delivered. $h$ is annual full-load hours, "
+        "$\\eta$ is a COP or a thermal fraction.\n\n"
+        "Fixed O&M is quoted per MWh delivered, so it converts by dividing by ten. It is not "
+        "divided by annual hours."
     )
 
     st.subheader("Net present value")
     st.latex(r"NPV = S^{op}\cdot\frac{(1+i)^n - 1}{i(1+i)^n} - \Delta CAPEX")
     st.latex(r"\Delta CAPEX = CAPEX_{elec}\cdot\frac{h_{base}}{h_{elec}} - CAPEX_{gas}")
     st.markdown(
-        "$S^{op}$ is the annual **operating** saving: fuel plus fixed O&M, excluding capital. "
-        "Levelised costs already amortise capital, so an NPV built from the difference of two LCOH "
-        "figures charges the same capital twice and can invert the sign of the result.\n\n"
-        "Options with lower annual utilisation are oversized so both deliver the same annual heat. "
-        "Capital scales with that factor; O&M does not, because it is already per MWh delivered."
+        "$S^{op}$ is the annual operating saving: fuel plus fixed O&M, excluding capital. "
+        "Capital enters once, as $\\Delta CAPEX$.\n\n"
+        "Options with lower utilisation are oversized to deliver the same annual heat. Capital "
+        "scales with that factor, O&M does not."
     )
 
     st.subheader("Price structure")
     st.markdown(
-        "Each fuel price is held as components rather than a single delivered figure:\n\n"
-        "- **Commodity** — the part set by the market, and the part that moves.\n"
-        "- **Network charges and retail margin**, and each **levy and tax** separately.\n"
-        "- **Policy relief**, applied as a reduction to the delivered price.\n"
-        "- **Carbon**, priced per kWh of gas input via the emission factor.\n\n"
-        "This matters for the Monte Carlo below, and it makes the relief mechanisms auditable: each "
-        "one states what it removes rather than applying an undifferentiated discount."
+        "Fuel prices are held as components, not delivered totals:\n\n"
+        "| Component | Varies in the Monte Carlo |\n|---|---|\n"
+        "| Commodity | yes |\n"
+        "| Network charges and retail margin | no |\n"
+        "| Levies and taxes, itemised | no |\n"
+        "| Carbon, per kWh of gas input | no |\n"
+        "| Policy relief | no |"
     )
 
-    st.subheader("Policy relief mechanisms")
+    st.subheader("Policy relief")
     st.markdown(
-        "Three mechanism types are implemented, matching how the schemes actually work:\n\n"
-        "- **Reference top-up** — pays (reference price − target price) on a share of volume. The "
-        "German Industriestrompreis. The reference is the scheme's own fixed forward price, not the "
-        "user's commodity assumption.\n"
-        "- **Exemption** — removes named levies in full and a share of network charges. The UK EII "
-        "Exemption Scheme under the British Industry Supercharger.\n"
-        "- **Flat** — a stated value per kWh, used where the government publishes an estimate rather "
-        "than a component rule. The British Industrial Competitiveness Scheme.\n\n"
-        "**Every relief is off by default.** Each carries eligibility conditions that a typical "
-        "industrial heat site of this size does not meet, and switching them on silently was how "
-        "earlier versions of this tool produced its most optimistic numbers."
+        "| Type | Mechanism | Example |\n|---|---|---|\n"
+        "| Reference top-up | (reference − target) on a share of volume | Industriestrompreis |\n"
+        "| Exemption | removes named levies and a share of network charges | EII Exemption Scheme |\n"
+        "| Flat | a stated value per kWh | BICS |\n\n"
+        "All reliefs are off by default. Each has eligibility conditions."
     )
 
-    st.subheader("Monte Carlo method")
+    st.subheader("Monte Carlo")
     st.markdown(
-        "**A trial is one state of the world.** Within a trial there is one gas commodity price, one "
-        "electricity commodity price, one cost of capital, one sampled gas boiler, and one sample of "
-        "each technology. Every comparison is made inside that trial, so the parity probability is the "
-        "frequency of a **paired** difference, not the overlap of two independently drawn "
-        "distributions."
-    )
-    st.markdown(
-        "**Marginals.** Each uncertain parameter is drawn from a triangular distribution centred on "
-        "its point estimate, with the half-widths listed below. The lower bound is raised to any "
-        "physical floor before drawing rather than clipping afterwards, because clipping piles "
-        "probability mass on the floor and shifts the mean."
-    )
-    st.markdown(
-        "**Dependence.** Gas and electricity commodity prices are drawn jointly through a Gaussian "
-        "copula (NORTA): correlated standard normals, mapped to uniforms by the normal CDF, then "
-        "through each marginal's inverse CDF. The copula is invariant under that monotone transform, "
-        "so the target Kendall's tau is reproduced exactly."
+        "**Trial structure.** One trial holds one gas commodity price, one electricity commodity "
+        "price, one cost of capital, one sampled gas boiler and one sample of each technology. "
+        "Parity probability is the frequency of a paired difference within trials.\n\n"
+        "**Marginals.** Triangular, centred on the point estimate. Lower bounds are raised to any "
+        "physical floor before drawing rather than clipped after.\n\n"
+        "**Dependence.** Gas and electricity commodity prices are drawn through a Gaussian copula "
+        "(NORTA). The copula is invariant under the marginal transform, so the target Kendall's tau "
+        "is reproduced exactly."
     )
     st.latex(r"\rho = \sin\!\left(\frac{\pi\tau}{2}\right)")
     st.markdown(
-        "$\\tau$ is estimated from **monthly log-returns**: daily series aligned in levels first, then "
-        "aggregated, then differenced, so every return spans the same interval on both sides. Monthly "
-        "is the horizon-appropriate frequency for a levelised metric; daily understates the dependence. "
-        "Germany is empirical at $\\tau = 0.426$ from TTF gas against EPEX day-ahead power. The other "
-        "jurisdictions have no estimate and run at independence, which the Uncertainty tab states "
-        "explicitly for each one rather than leaving it implicit."
-    )
-    st.markdown(
-        "**Volatility applies to commodity components only.** Grid fees, levies and the carbon price "
-        "are set by regulation and policy, not by the market, and the dependence above was estimated "
-        "on wholesale series. Applying wholesale volatility to a delivered price that is roughly a "
-        "third regulated charges widens the parity-gap distribution by about a quarter and roughly "
-        "doubles the parity probability, without moving the median."
-    )
-    st.markdown(
-        "**Variance decomposition** reports **main effects**: each input is varied alone with "
-        "everything else held at its point value. The alternative, freezing one input at a time and "
-        "attributing the drop in variance, is not usable here. Gas and electricity are deliberately "
-        "correlated and the parity gap is a difference, so their co-movement partially cancels; "
-        "freezing one of them makes the variance rise rather than fall, and the implied share is "
-        "negative. For the same reason the two prices are treated as a single block. Shares are "
-        "normalised to sum to 100 and do not attribute interactions."
-    )
-    st.markdown(
-        "**Sampling error.** Each parity probability carries a binomial standard error of "
-        "$\\sqrt{p(1-p)/N}$, reported as a 95% band. At 5,000 draws a probability near 2% carries "
-        "about ±0.4 points, so quoting one decimal place without the draw count overstates the "
-        "precision. The seed is honoured: the generator is explicit and nothing reseeds numpy's "
-        "global state."
+        "$\\tau$ is estimated from monthly log-returns, with daily series aligned in levels before "
+        "aggregating and differencing. Germany is empirical at 0.426, from TTF gas against EPEX "
+        "day-ahead power. Other jurisdictions run at independence, stated per jurisdiction in the "
+        "Uncertainty tab.\n\n"
+        "**Scope.** Volatility and dependence apply to commodity components only. Both were measured "
+        "on wholesale series; network charges and levies are set by regulation.\n\n"
+        "**Variance decomposition.** Main effects, each input varied alone. Freeze-one attribution "
+        "is not usable with correlated inputs: holding electricity fixed raises the gap variance "
+        "rather than lowering it. Gas and electricity are treated as one block for the same reason. "
+        "Shares sum to 100 and exclude interactions.\n\n"
+        "**Sampling error.** Binomial standard error $\\sqrt{p(1-p)/N}$, reported as a 95% band."
     )
 
     st.markdown("**Parameter half-widths**")
